@@ -56,8 +56,6 @@ typedef std::vector<position> Move;
 typedef Piece Board[8][8];
 typedef std::bitset<sizeof(Board) * CHAR_BIT> RawBoard;
 
-#define KILLER_HEURISTIC_ON true
-
 class Checkers
 {
 public:
