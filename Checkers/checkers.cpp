@@ -14,13 +14,13 @@ const int Checkers::NORMAL_ROW_WEIGHT_BLACK[8] = {
 const int Checkers::MAX_TRANSTABLE_MAKE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
 	-1, 0, 1, 2, 2, 2, 3, 3, 4
 #if !defined _DEBUG && !defined DEBUG
-	, 5, 6, 6, 6
+	, 5, 6, 6, 7
 #endif
 }; // -1 - unused
 const int Checkers::MIN_TRANSTABLE_USE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
 	-1, 0, 1, 1, 2, 2, 2, 3, 3
 #if !defined _DEBUG && !defined DEBUG
-	, 4, 5, 6, 5
+	, 4, 5, 6, 6
 #endif
 }; // -1 - unused
 
