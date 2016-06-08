@@ -1,8 +1,7 @@
 // Checkers benchmarker
 // Launches computer vs computer game and writes it's log to ai_log.txt
-// By Yurko Prokopets(aka YurkoFlisk)
-// WinMain.cpp
-// Version 1.3
+// Copyright(c) 2016 Yurko Prokopets(aka YurkoFlisk)
+// main.cpp, version 1.3
 
 #include "..\Checkers\checkers.h"
 #include <iostream>
