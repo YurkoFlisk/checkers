@@ -1,6 +1,7 @@
 # checkers
 
-Current version - 1.3.
+Current version - 1.3
+
 Checkers program with simple interface written on WinAPI. Uses Russian checkers rules.
 Program's features:
 - playing pvp games
