@@ -1,4 +1,4 @@
-# checkers
+# Checkers
 
 Current version - 1.3
 
@@ -10,6 +10,6 @@ Program's features:
 - doing and undoing moves
 - saving and loading games in standard checkers notation
 
-# license
+# License
 
 Licensed under GNU GPL v3
