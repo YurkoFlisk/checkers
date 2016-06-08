@@ -7,3 +7,7 @@ Program's features:
 - AI hints
 - doing and undoing moves
 - saving and loading games in standard checkers notation
+
+# license
+
+Licensed under GNU GPL v3
