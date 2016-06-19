@@ -1,19 +1,19 @@
 // Checkers benchmarker
 // Launches computer vs computer game and writes it's log to ai_log.txt
 // Copyright(c) 2016 Yurko Prokopets(aka YurkoFlisk)
-// main.cpp, version 1.3
+// main.cpp, version 1.4
 
 #include "..\Checkers\checkers.h"
 #include <iostream>
 #include <chrono>
 
 using namespace std;
-CONSTEXPR const char* AI_LOG_FILE = "ai_log.txt";
+constexpr const char* AI_LOG_FILE = "ai_log.txt";
 
 int main(void)
 {
 	Checkers white_ai, black_ai;
-	int white_level, black_level;
+	int white_level, black_level, timer;
 	Move move;
 	cout << "Enter white level: ";
 	cin >> white_level;
@@ -27,12 +27,13 @@ int main(void)
 		auto start_time = std::chrono::high_resolution_clock::now();
 		(white_turn ? white_ai : black_ai).get_computer_move(move);
 		auto end_time = std::chrono::high_resolution_clock::now();
+		timer = std::chrono::duration_cast<
+			std::chrono::milliseconds>(end_time - start_time).count();
 		white_ai.move(move);
 		black_ai.move(move);
 		ai_log << (white_turn ? "White" : "Black") << " move ";
 		Checkers::write_move(ai_log, move);
-		ai_log << ". " << std::chrono::duration_cast<
-			std::chrono::milliseconds>(end_time - start_time).count() << "ms elapsed\n";
+		ai_log << ". " << timer << "ms elapsed\n";
 		if (white_ai.get_state() != GAME_CONTINUE)
 		{
 			if (white_ai.get_state() == DRAW)
