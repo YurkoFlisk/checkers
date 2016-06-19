@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// misc.h, version 1.3
+// misc.h, version 1.4
 
 #pragma once
 #ifndef _MISC_H
@@ -41,6 +41,11 @@ public:
 		: ptr(&value), old(value)
 	{
 		value = assigned;
+	}
+	tmp_assign(Value& value, Value&& assigned)
+		: ptr(&value), old(std::move(value))
+	{
+		value = std::move(assigned);
 	}
 	~tmp_assign(void)
 	{

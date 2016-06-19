@@ -19,9 +19,16 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// WinMain.cpp, version 1.3
+// WinMain.cpp, version 1.4
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <algorithm>
+namespace Gdiplus
+{
+	using std::min;
+	using std::max;
+}
 #include <Windows.h>
 #include <windowsx.h>
 #include <CommCtrl.h>
@@ -32,21 +39,17 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include "targetver.h"
 #include "resource.h"
 #include "checkers.h"
-#include "constants.h"
 #if defined _DEBUG || defined DEBUG // Memory leak detection
  #define _CRTDBG_MAP_ALLOC
  #include <cstdlib>
  #include <crtdbg.h>
 #endif
+#include <objidl.h>
+#include <gdiplus.h>
+#include "constants.h"
+using namespace Gdiplus;
 // Messages
 #define CM_CPUMOVE WM_USER // Checkers' message - computer move
-// Colors
-CONSTEXPR DWORD C_LTGRAY = RGB(192, 192, 192);
-CONSTEXPR DWORD C_GRAY = RGB(160, 160, 160);
-CONSTEXPR DWORD C_BROWN = RGB(139, 69, 19);
-CONSTEXPR DWORD C_BLACK = RGB(0, 0, 0);
-CONSTEXPR DWORD C_GREEN = RGB(20, 255, 20);
-CONSTEXPR DWORD C_SHADOW = RGB(77, 162, 49);
 // Global variables
 HINSTANCE hInst; // program's instance
 Checkers checkers; // game logic
@@ -57,13 +60,30 @@ bool board_whitedown; // true if board is turned so that 1-st row is lower than 
 bool player_white; // true if player plays white(unused if pvp == true)
 bool repaint_board; // true if we need to repaint board in a next processing of WM_PAINT message
 bool computers_move; // indicates whether ai is thinking at the moment
+int d_ycenter; // distance between base line and y-center of the font
+int selected_x, selected_y; // coordinates of selected piece(both -1 if no one is selected)
+std::vector<Position> selected_part_moves; // possible part moves for selected piece
+// Pens
+Pen* blackPen;
+Pen* selectedPen;
+Pen* possiblePen;
+// Brushes
+HBRUSH hBackground = (HBRUSH)(COLOR_WINDOW + 1);
+SolidBrush* whiteCellBrush;
+SolidBrush* blackCellBrush;
+SolidBrush* whitePieceBrush;
+SolidBrush* blackPieceBrush;
+SolidBrush* shadowPieceBrush;
+SolidBrush* crownBrush;
 // Forward declarations
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int);
 bool CreateMainWindow(HINSTANCE, int);
-void FinishGame(HWND hWnd);
+void FinishGame(HWND);
+void GetPositionRect(const Position&, RECT*);
+void OnPaint(HDC);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK CpuGame(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK DlgNewGame(HWND, UINT, WPARAM, LPARAM);
 // Main function
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -74,6 +94,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 	MSG msg;
 	HACCEL hAccelTable;
+	GdiplusStartupInput gpStartupInput;
+	ULONG_PTR gpToken;
+	GdiplusStartup(&gpToken, &gpStartupInput, NULL);
 	if (!CreateMainWindow(hInstance, nCmdShow))
 		return FALSE;
 	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_CHECKERS));
@@ -85,6 +108,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			DispatchMessage(&msg);
 		}
 	}
+	GdiplusShutdown(gpToken);
 	return msg.wParam;
 }
 // Function for creating main window
@@ -98,19 +122,30 @@ bool CreateMainWindow(HINSTANCE hInstance, int nCmdShow)
 	wndClass.style = CS_HREDRAW | CS_VREDRAW;
 	wndClass.lpszClassName = CLASS_NAME;
 	wndClass.lpszMenuName = MAKEINTRESOURCE(IDC_CHECKERS);
-	wndClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+	wndClass.hbrBackground = hBackground;
 	wndClass.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wndClass.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDR_MAINFRAME));
 	wndClass.hIconSm = LoadIcon(hInstance, MAKEINTRESOURCE(IDR_MAINFRAME));
 	if (!RegisterClassEx(&wndClass))
 		return false;
-	HWND hWnd = CreateWindow(CLASS_NAME, MAIN_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-		MAIN_WIDTH, MAIN_HEIGHT, NULL, NULL, hInst, NULL);
+	HWND hWnd = CreateWindow(CLASS_NAME, MAIN_TITLE, WS_OVERLAPPEDWINDOW & (~WS_THICKFRAME),
+		CW_USEDEFAULT, CW_USEDEFAULT, MAIN_WIDTH, MAIN_HEIGHT, NULL, NULL, hInst, NULL);
 	if (!hWnd)
 		return false;
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
 	return true;
+}
+// Function for getting bounding rect of given position
+void GetPositionRect(const Position& pos, RECT* rect)
+{
+	if(board_whitedown)
+		rect->left = BOARD_LEFT + pos.get_column()*CELL_SIZE,
+		rect->top = BOARD_BOTTOM - (pos.get_row() + 1)*CELL_SIZE;
+	else
+		rect->left = BOARD_RIGHT - (pos.get_column() + 1)*CELL_SIZE,
+		rect->top = BOARD_TOP + pos.get_row()*CELL_SIZE;
+	rect->right = rect->left + CELL_SIZE, rect->bottom = rect->top + CELL_SIZE;
 }
 // Function for finishing game
 void FinishGame(HWND hWnd)
@@ -124,21 +159,102 @@ void FinishGame(HWND hWnd)
 		MessageBox(hWnd, checkers.get_state() == WHITE_WIN ? "White won this game!" :
 			"Black won this game!", "Game result", MB_ICONINFORMATION);
 }
+// Function for drawing
+void OnPaint(HDC hDC)
+{
+	Graphics graphics(hDC);
+	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	if (checkers.current_turn_colour() == WHITE)
+		graphics.FillEllipse(whitePieceBrush, BOARD_RIGHT, BOARD_TOP - D_TURN, D_TURN, D_TURN);
+	else
+		graphics.FillEllipse(blackPieceBrush, BOARD_RIGHT, BOARD_TOP - D_TURN, D_TURN, D_TURN);
+	if (repaint_board)
+	{
+		SetTextAlign(hDC, TA_BASELINE | TA_CENTER);
+		for (int i = 0; i < 8; ++i)
+			TextOut(hDC, BOARD_LEFT + i*CELL_SIZE + CELL_SIZE / 2, BOARD_TOP - D_COLUMN + d_ycenter, COLUMN_LR[board_whitedown ? i : 7 - i], 1);
+		for (int i = 0; i < 8; ++i)
+			TextOut(hDC, BOARD_LEFT - D_ROW, BOARD_TOP + i*CELL_SIZE + CELL_SIZE / 2 + d_ycenter, ROW_TD[board_whitedown ? i : 7 - i], 1);
+		for (int x = BOARD_LEFT, n = 0; x < BOARD_RIGHT; x += CELL_SIZE, ++n)
+			for (int y = BOARD_TOP + CELL_SIZE*(n & 1); y < BOARD_BOTTOM; y += 2 * CELL_SIZE)
+			{
+				graphics.DrawRectangle(blackPen, x, y, CELL_SIZE, CELL_SIZE);
+				graphics.FillRectangle(whiteCellBrush, x, y, CELL_SIZE, CELL_SIZE);
+			}
+		repaint_board = false;
+	}
+	if (computers_move)
+		return;
+	for (int x = BOARD_LEFT, n = 0; x < BOARD_RIGHT; x += CELL_SIZE, ++n)
+		for (int y = BOARD_TOP + CELL_SIZE*(1 - (n & 1)); y < BOARD_BOTTOM; y += 2 * CELL_SIZE)
+		{
+			graphics.DrawRectangle(blackPen, x, y, CELL_SIZE, CELL_SIZE);
+			graphics.FillRectangle(blackCellBrush, x, y, CELL_SIZE, CELL_SIZE);
+		}
+	for (int i = 0; i < 8; ++i)
+		for (int j = i & 1; j < 8; j += 2)
+		{
+			if (checkers[i][j].get_colour() == SHADOW)
+				if (board_whitedown)
+					graphics.FillEllipse(shadowPieceBrush, BOARD_LEFT + j*CELL_SIZE + D_PIECE, BOARD_BOTTOM - (i + 1)*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+				else
+					graphics.FillEllipse(shadowPieceBrush, BOARD_RIGHT - (j + 1)*CELL_SIZE + D_PIECE, BOARD_TOP + i*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+			else if (checkers[i][j].get_colour() == WHITE)
+				if (board_whitedown)
+					graphics.FillEllipse(whitePieceBrush, BOARD_LEFT + j*CELL_SIZE + D_PIECE, BOARD_BOTTOM - (i + 1)*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+				else
+					graphics.FillEllipse(whitePieceBrush, BOARD_RIGHT - (j + 1)*CELL_SIZE + D_PIECE, BOARD_TOP + i*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+			else if (checkers[i][j].get_colour() == BLACK)
+				if (board_whitedown)
+					graphics.FillEllipse(blackPieceBrush, BOARD_LEFT + j*CELL_SIZE + D_PIECE, BOARD_BOTTOM - (i + 1)*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+				else
+					graphics.FillEllipse(blackPieceBrush, BOARD_RIGHT - (j + 1)*CELL_SIZE + D_PIECE, BOARD_TOP + i*CELL_SIZE + D_PIECE,
+						PIECE_SIZE, PIECE_SIZE);
+			if (checkers[i][j].is_queen())
+				if (board_whitedown)
+					graphics.FillEllipse(crownBrush, BOARD_LEFT + j*CELL_SIZE + D_QUEEN, BOARD_BOTTOM - (i + 1)*CELL_SIZE + D_QUEEN,
+						CROWN_SIZE, CROWN_SIZE);
+				else
+					graphics.FillEllipse(crownBrush, BOARD_RIGHT - (j + 1)*CELL_SIZE + D_QUEEN, BOARD_TOP + i*CELL_SIZE + D_QUEEN,
+						CROWN_SIZE, CROWN_SIZE);
+		}
+	if (selected_x != -1)
+	{
+		if (board_whitedown)
+			graphics.DrawEllipse(selectedPen, BOARD_LEFT + selected_x*CELL_SIZE + D_SELECTED,
+				BOARD_BOTTOM - (selected_y + 1)*CELL_SIZE + D_SELECTED, SELECTED_SIZE, SELECTED_SIZE);
+		else
+			graphics.DrawEllipse(selectedPen, BOARD_RIGHT - (selected_x + 1)*CELL_SIZE + D_SELECTED,
+				BOARD_TOP + selected_y*CELL_SIZE + D_SELECTED, SELECTED_SIZE, SELECTED_SIZE);
+		for (const auto& pos : selected_part_moves)
+			if (board_whitedown)
+				graphics.DrawEllipse(possiblePen, BOARD_LEFT + pos.get_column()*CELL_SIZE + D_POSSIBLE,
+					BOARD_BOTTOM - (pos.get_row() + 1)*CELL_SIZE + D_POSSIBLE, POSSIBLE_SIZE, POSSIBLE_SIZE);
+			else
+				graphics.DrawEllipse(possiblePen, BOARD_RIGHT - (pos.get_column() + 1)*CELL_SIZE + D_POSSIBLE,
+					BOARD_TOP + pos.get_row()*CELL_SIZE + D_POSSIBLE, POSSIBLE_SIZE, POSSIBLE_SIZE);
+	}
+}
 // Callback function for main window
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static char ofn_buffer[MAX_OFN_CHARS];
 	static OPENFILENAMEA ofn;
-	static size_t sx, sy;
-	static size_t tmp_x, tmp_y, x_pos, y_pos;
-	static int d_ycenter; // distance between base line and y-center of the font
-	static HBRUSH hWhiteCellBrush;
-	static HBRUSH hBlackCellBrush;
-	static HBRUSH hWhitePieceBrush;
-	static HBRUSH hBlackPieceBrush;
-	static HBRUSH hShadowPieceBrush;
-	static HBRUSH hCrownBrush;
 	static TEXTMETRIC tm;
+	static RECT updateRect;
+	static HDC hDC, hDCMem;
+	static HBITMAP hBMMem;
+	static HANDLE hOld;
+	static PAINTSTRUCT ps;
+	static int wmId, wmEvent;
+	static size_t tmp_x, tmp_y, x_pos, y_pos;
+	static step_result pm_result;
+	static std::vector<Position> cur_move_used_pos;
 	static Move cpuMove; // shared between two threads
 	static std::mutex mut;
 	static std::thread ai; // thread for ai computations
@@ -155,9 +271,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		checkers.set_search_depth(prev_depth);
 		PostMessage(hWnd, CM_CPUMOVE, NULL, NULL);
 	};
-	HDC hDC;
-	PAINTSTRUCT ps;
-	int wmId, wmEvent;
 	switch (msg)
 	{
 	case WM_CREATE:
@@ -167,13 +280,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		ofn.lpstrFilter = "All files\0*.*";
 		ofn.hInstance = hInst;
 		ofn.lpstrInitialDir = ".\\";
-		hWhiteCellBrush = CreateSolidBrush(C_LTGRAY);
-		hBlackCellBrush = CreateSolidBrush(C_BROWN);
-		hWhitePieceBrush = CreateSolidBrush(C_GRAY);
-		hBlackPieceBrush = CreateSolidBrush(C_BLACK);
-		hShadowPieceBrush = CreateSolidBrush(C_SHADOW);
-		hCrownBrush = CreateSolidBrush(C_GREEN);
+		blackPen = new Pen(C_BLACK);
+		selectedPen = new Pen(C_YELLOW, SELECTED_PEN_WIDTH);
+		possiblePen = new Pen(C_BLUE, POSSIBLE_PEN_WIDTH);
+		whiteCellBrush = new SolidBrush(C_LTGRAY);
+		blackCellBrush = new SolidBrush(C_BROWN);
+		whitePieceBrush = new SolidBrush(C_GRAY);
+		blackPieceBrush = new SolidBrush(C_BLACK);
+		shadowPieceBrush = new SolidBrush(C_SHADOW);
+		crownBrush = new SolidBrush(C_GREEN);
 		hDC = GetDC(hWnd);
+		hDCMem = CreateCompatibleDC(hDC);
+		hBMMem = CreateCompatibleBitmap(hDC, MAIN_WIDTH, MAIN_HEIGHT);
+		hOld = SelectObject(hDCMem, hBMMem);
+		updateRect.left = updateRect.top = 0, updateRect.right = MAIN_WIDTH, updateRect.bottom = MAIN_HEIGHT;
+		FillRect(hDCMem, &updateRect, hBackground);
 		GetTextMetrics(hDC, &tm);
 		d_ycenter = (tm.tmAscent - tm.tmDescent) / 2;
 		player_white = true;
@@ -181,78 +302,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		board_whitedown = true;
 		repaint_board = true;
 		computers_move = false;
-		break;
-	case WM_SIZE:
-		sx = LOWORD(lParam);
-		sy = HIWORD(lParam);
-		repaint_board = true;
+		selected_x = selected_y = -1;
 		break;
 	case WM_MOVE:
 		repaint_board = true;
 		break;
 	case WM_PAINT:
+		updateRect.left = BOARD_RIGHT, updateRect.top = BOARD_TOP - D_TURN,
+			updateRect.right = BOARD_RIGHT + D_TURN, updateRect.bottom = BOARD_TOP;
+		InvalidateRect(hWnd, &updateRect, FALSE);
 		hDC = BeginPaint(hWnd, &ps);
-		if (checkers.current_turn_color() == WHITE)
-			SelectObject(hDC, (HGDIOBJ)hWhitePieceBrush);
-		else
-			SelectObject(hDC, (HGDIOBJ)hBlackPieceBrush);
-		Ellipse(hDC, BOARD_RIGHT, BOARD_TOP - D_TURN, BOARD_RIGHT + D_TURN, BOARD_TOP);
-		if (computers_move)
-		{
-			EndPaint(hWnd, &ps);
-			break;
-		}
-		if (repaint_board)
-		{
-			SetTextAlign(hDC, TA_BASELINE | TA_CENTER);
-			for (size_t i = 0; i < 8; ++i)
-				TextOut(hDC, BOARD_LEFT + i*CELL_SIZE + CELL_SIZE / 2, BOARD_TOP - D_COLUMN + d_ycenter, COLUMN_LR[board_whitedown ? i : 7 - i], 1);
-			for (size_t i = 0; i < 8; ++i)
-				TextOut(hDC, BOARD_LEFT - D_ROW, BOARD_TOP + i*CELL_SIZE + CELL_SIZE / 2 + d_ycenter, ROW_TD[board_whitedown ? i : 7 - i], 1);
-			SelectObject(hDC, (HGDIOBJ)hWhiteCellBrush);
-			for (size_t x = BOARD_LEFT, n = 0; x < BOARD_RIGHT; x += CELL_SIZE, ++n)
-				for (size_t y = BOARD_TOP + CELL_SIZE*(n & 1); y < BOARD_BOTTOM; y += 2 * CELL_SIZE)
-					Rectangle(hDC, x, y, x + CELL_SIZE, y + CELL_SIZE);
-			repaint_board = false;
-		}
-		SelectObject(hDC, (HGDIOBJ)hBlackCellBrush);
-		for (size_t x = BOARD_LEFT, n = 0; x < BOARD_RIGHT; x += CELL_SIZE, ++n)
-			for (size_t y = BOARD_TOP + CELL_SIZE*(1 - (n & 1)); y < BOARD_BOTTOM; y += 2 * CELL_SIZE)
-				Rectangle(hDC, x, y, x + CELL_SIZE, y + CELL_SIZE);
-		SelectObject(hDC, (HGDIOBJ)hShadowPieceBrush);
-		for (size_t i = 0; i < 8; ++i)
-			for (size_t j = i & 1; j < 8; j += 2)
-				if (checkers[i][j].color == SHADOW)
-					if (board_whitedown)
-						Ellipse(hDC, BOARD_LEFT + j*CELL_SIZE, BOARD_BOTTOM - (i + 1)*CELL_SIZE, BOARD_LEFT + (j + 1)*CELL_SIZE, BOARD_BOTTOM - i*CELL_SIZE);
-					else
-						Ellipse(hDC, BOARD_RIGHT - (j + 1)*CELL_SIZE, BOARD_TOP + i*CELL_SIZE, BOARD_RIGHT - j*CELL_SIZE, BOARD_TOP + (i + 1)*CELL_SIZE);
-		SelectObject(hDC, (HGDIOBJ)hWhitePieceBrush);
-		for (size_t i = 0; i < 8; ++i)
-			for (size_t j = i & 1; j < 8; j += 2)
-				if (checkers[i][j].color == WHITE)
-					if (board_whitedown)
-						Ellipse(hDC, BOARD_LEFT + j*CELL_SIZE, BOARD_BOTTOM - (i + 1)*CELL_SIZE, BOARD_LEFT + (j + 1)*CELL_SIZE, BOARD_BOTTOM - i*CELL_SIZE);
-					else
-						Ellipse(hDC, BOARD_RIGHT - (j + 1)*CELL_SIZE, BOARD_TOP + i*CELL_SIZE, BOARD_RIGHT - j*CELL_SIZE, BOARD_TOP + (i + 1)*CELL_SIZE);
-		SelectObject(hDC, (HGDIOBJ)hBlackPieceBrush);
-		for (size_t i = 0; i < 8; ++i)
-			for (size_t j = i & 1; j < 8; j += 2)
-				if (checkers[i][j].color == BLACK)
-					if (board_whitedown)
-						Ellipse(hDC, BOARD_LEFT + j*CELL_SIZE, BOARD_BOTTOM - (i + 1)*CELL_SIZE, BOARD_LEFT + (j + 1)*CELL_SIZE, BOARD_BOTTOM - i*CELL_SIZE);
-					else
-						Ellipse(hDC, BOARD_RIGHT - (j + 1)*CELL_SIZE, BOARD_TOP + i*CELL_SIZE, BOARD_RIGHT - j*CELL_SIZE, BOARD_TOP + (i + 1)*CELL_SIZE);
-		SelectObject(hDC, (HGDIOBJ)hCrownBrush);
-		for (size_t i = 0; i < 8; ++i)
-			for (size_t j = i & 1; j < 8; j += 2)
-				if (checkers[i][j].queen)
-					if (board_whitedown)
-						Ellipse(hDC, BOARD_LEFT + j*CELL_SIZE + D_QUEEN, BOARD_BOTTOM - (i + 1)*CELL_SIZE + D_QUEEN,
-							BOARD_LEFT + (j + 1)*CELL_SIZE - D_QUEEN, BOARD_BOTTOM - i*CELL_SIZE - D_QUEEN);
-					else
-						Ellipse(hDC, BOARD_RIGHT - (j + 1)*CELL_SIZE + D_QUEEN, BOARD_TOP + i*CELL_SIZE + D_QUEEN,
-							BOARD_RIGHT - j*CELL_SIZE - D_QUEEN, BOARD_TOP + (i + 1)*CELL_SIZE - D_QUEEN);
+		OnPaint(hDCMem);
+		BitBlt(hDC, 0, 0, MAIN_WIDTH, MAIN_HEIGHT, hDCMem, 0, 0, SRCCOPY);
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_LBUTTONDOWN:
@@ -266,9 +327,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			x_pos = (tmp_x - BOARD_LEFT) / CELL_SIZE, y_pos = (BOARD_BOTTOM - tmp_y) / CELL_SIZE;
 		else
 			x_pos = 7 - (tmp_x - BOARD_LEFT) / CELL_SIZE, y_pos = 7 - (BOARD_BOTTOM - tmp_y) / CELL_SIZE;
-		if (checkers.part_move(position(y_pos, x_pos)))
+		for (const auto& pos : selected_part_moves)
 		{
-			InvalidateRect(hWnd, NULL, FALSE);
+			GetPositionRect(pos, &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+		}
+		selected_part_moves.clear();
+		pm_result = checkers.step(Position(y_pos, x_pos));
+		if (pm_result == STEP_FINISH)
+		{
+			cur_move_used_pos.clear();
+			GetPositionRect(Position(selected_y, selected_x), &updateRect);
+			selected_x = selected_y = -1;
+			InvalidateRect(hWnd, &updateRect, FALSE);
+			GetPositionRect(Position(y_pos, x_pos), &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+			for(const auto& capt : checkers.get_last_move().get_captured())
+			{
+				GetPositionRect(capt.first, &updateRect);
+				InvalidateRect(hWnd, &updateRect, FALSE);
+			}
 			UpdateWindow(hWnd);
 			if (!pvp && checkers.get_state() == GAME_CONTINUE)
 			{
@@ -279,21 +357,67 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			else if (checkers.get_state() != GAME_CONTINUE)
 				FinishGame(hWnd);
 		}
-		else
-			InvalidateRect(hWnd, NULL, FALSE);
+		else if (checkers[y_pos][x_pos].get_colour() == checkers.current_turn_colour())
+		{
+			cur_move_used_pos.push_back(Position(selected_y, selected_x));
+			GetPositionRect(cur_move_used_pos.back(), &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+			GetPositionRect(Position(y_pos, x_pos), &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+			selected_x = x_pos, selected_y = y_pos;
+			if (!checkers.get_part_move().get_captured().empty())
+			{
+				cur_move_used_pos.push_back(checkers.get_part_move().get_captured().back().first);
+				GetPositionRect(cur_move_used_pos.back(), &updateRect);
+				InvalidateRect(hWnd, &updateRect, FALSE);
+			}
+			if (pm_result != STEP_ILLEGAL)
+				for (const auto& move : checkers.get_part_possible_moves())
+				{
+					selected_part_moves.push_back(move[checkers.get_part_move_size()]);
+					GetPositionRect(move[checkers.get_part_move_size()], &updateRect);
+					InvalidateRect(hWnd, &updateRect, FALSE);
+				}
+		}
+		else if(selected_x != -1)
+		{
+			for (const auto& pos : cur_move_used_pos)
+			{
+				GetPositionRect(pos, &updateRect);
+				InvalidateRect(hWnd, &updateRect, FALSE);
+			}
+			GetPositionRect(Position(selected_y, selected_x), &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+			selected_x = selected_y = -1;
+		}
 		break;
 	case CM_CPUMOVE:
 		// Performing and animating computer move
 		computers_move = false;
 		for (size_t i = 0; i < cpuMove.size(); ++i)
 		{
-			checkers.part_move(cpuMove[i]);
-			InvalidateRect(hWnd, NULL, FALSE);
-			UpdateWindow(hWnd);
-			Sleep(STEP_SLEEP_TIME);
+			checkers.step(cpuMove[i]);
+			if (i > 0)
+			{
+				GetPositionRect(cpuMove[i - 1], &updateRect);
+				InvalidateRect(hWnd, &updateRect, FALSE);
+				GetPositionRect(cpuMove[i], &updateRect);
+				InvalidateRect(hWnd, &updateRect, FALSE);
+				if (!cpuMove.get_captured().empty())
+				{
+					GetPositionRect(cpuMove.get_captured()[i - 1].first, &updateRect);
+					InvalidateRect(hWnd, &updateRect, FALSE);
+				}
+				UpdateWindow(hWnd);
+				if (i != cpuMove.size() - 1)
+					Sleep(STEP_SLEEP_TIME);
+			}
 		}
-		InvalidateRect(hWnd, NULL, FALSE);
-		UpdateWindow(hWnd);
+		for (const auto& capt : checkers.get_last_move().get_captured())
+		{
+			GetPositionRect(capt.first, &updateRect);
+			InvalidateRect(hWnd, &updateRect, FALSE);
+		}
 		if (checkers.get_state() != GAME_CONTINUE)
 			FinishGame(hWnd);
 		else if (!pvp && checkers.get_white_turn() != player_white)
@@ -308,19 +432,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		wmEvent = HIWORD(wParam);
 		switch (wmId)
 		{
-		case IDM_NEW_GAME_CPU:
+		case IDM_NEW_GAME:
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
 			if (!computers_move)
-				DialogBox(hInst, MAKEINTRESOURCE(IDD_CPUGAME), hWnd, CpuGame);
-			break;
-		case IDM_NEW_GAME_PVP:
-			if (computers_move)
-				break;
-			checkers.restart();
-			pvp = true;
-			board_whitedown = true;
-			repaint_board = true;
-			computers_move = false;
-			InvalidateRect(hWnd, NULL, TRUE);
+				DialogBox(hInst, MAKEINTRESOURCE(IDD_NEWGAME), hWnd, DlgNewGame);
 			break;
 		case IDM_REVERSE:
 			board_whitedown = !board_whitedown;
@@ -329,6 +445,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				InvalidateRect(hWnd, NULL, TRUE);
 			break;
 		case IDM_UNDO_MOVE:
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
 			if (computers_move)
 				break;
 			checkers.undo_move();
@@ -337,6 +455,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		case IDM_REDO_MOVE:
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
 			if (computers_move || checkers.get_state() != GAME_CONTINUE)
 				break;
 			checkers.redo_move();
@@ -347,8 +467,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				FinishGame(hWnd);
 			break;
 		case IDM_HINT:
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
 			if (computers_move || checkers.get_state() != GAME_CONTINUE)
 				break;
+			checkers.part_undo();
+			InvalidateRect(hWnd, NULL, FALSE);
+			UpdateWindow(hWnd);
 			computers_move = true;
 			ai = std::thread(ai_hint_move, hWnd); // Launching new thread for ai
 			ai.detach();
@@ -399,6 +524,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_DESTROY:
+		delete blackPen;
+		delete selectedPen;
+		delete possiblePen;
+		delete whiteCellBrush;
+		delete blackCellBrush;
+		delete whitePieceBrush;
+		delete blackPieceBrush;
+		delete shadowPieceBrush;
+		delete crownBrush;
+		DeleteObject(hBackground);
+		DeleteObject(hBMMem);
+		SelectObject(hDCMem, hOld);
+		DeleteDC(hDCMem);
 		PostQuitMessage(0);
 		break;
 	default:
@@ -425,8 +563,9 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	return (INT_PTR)FALSE;
 }
 // Callback function for new game with computer dialog box
-INT_PTR CALLBACK CpuGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	static bool misere;
 	static size_t idx;
 	static HWND hLevelCBWnd;
 	switch (message)
@@ -444,20 +583,29 @@ INT_PTR CALLBACK CpuGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDOK:
 			computers_move = false;
 			repaint_board = true;
-			pvp = false;
-			idx = SendMessage(GetDlgItem(hDlg, IDC_LEVEL), CB_GETCURSEL, NULL, NULL);
-			checkers.set_search_depth(LEVELS[idx]);
-			checkers.restart();
-			if (IsDlgButtonChecked(hDlg, IDC_WHITE) == BST_CHECKED)
+			pvp = IsDlgButtonChecked(hDlg, IDC_PVP);
+			misere = IsDlgButtonChecked(hDlg, IDC_MISERE);
+			if (pvp)
 			{
-				player_white = true;
 				board_whitedown = true;
+				checkers.restart(misere);
 			}
 			else
 			{
-				player_white = false;
-				board_whitedown = false;
-				checkers.perform_computer_move();
+				idx = SendMessage(GetDlgItem(hDlg, IDC_LEVEL), CB_GETCURSEL, NULL, NULL);
+				checkers.set_search_depth(LEVELS[idx]);
+				checkers.restart(misere);
+				if (IsDlgButtonChecked(hDlg, IDC_WHITE) == BST_CHECKED)
+				{
+					player_white = true;
+					board_whitedown = true;
+				}
+				else
+				{
+					player_white = false;
+					board_whitedown = false;
+					checkers.perform_computer_move();
+				}
 			}
 			InvalidateRect(GetParent(hDlg), NULL, TRUE);
 		case IDCANCEL:

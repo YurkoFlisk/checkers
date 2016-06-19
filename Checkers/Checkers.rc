@@ -33,13 +33,9 @@ IDC_CHECKERS MENU
 BEGIN
     POPUP "&Game"
     BEGIN
-        POPUP "&New game"
-        BEGIN
-            MENUITEM "&With computer",              IDM_NEW_GAME_CPU
-            MENUITEM "&Two players",                IDM_NEW_GAME_PVP
-        END
-        MENUITEM "Open game",                   IDM_OPENGAME
-        MENUITEM "Save game",                   IDM_SAVEGAME
+        MENUITEM "&New game",                   IDM_NEW_GAME
+        MENUITEM "&Open game",                  IDM_OPENGAME
+        MENUITEM "&Save game",                  IDM_SAVEGAME
         MENUITEM SEPARATOR
         MENUITEM "&Undo move",                  IDM_UNDO_MOVE
         MENUITEM "&Redo move",                  IDM_REDO_MOVE
@@ -85,7 +81,7 @@ CAPTION "About Checkers"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     ICON            IDR_MAINFRAME,IDC_STATIC,14,14,20,20
-    CTEXT           "Checkers, version 1.3",IDC_STATIC,42,14,114,8,SS_NOPREFIX
+    CTEXT           "Checkers, version 1.4",IDC_STATIC,42,14,114,8,SS_NOPREFIX
     CTEXT           "Copyright Yurko Prokopets(C) 2016\nLicensed under GNU GPL v3",IDC_STATIC,39,22,120,17
     DEFPUSHBUTTON   "Œ ",IDOK,116,42,50,14,WS_GROUP
 END
@@ -156,18 +152,20 @@ LANGUAGE LANG_UKRAINIAN, SUBLANG_DEFAULT
 // Dialog
 //
 
-IDD_CPUGAME DIALOGEX 0, 0, 127, 74
+IDD_NEWGAME DIALOGEX 0, 0, 127, 87
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "New game with AI"
+CAPTION "New game"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "Œ ",IDOK,13,53,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,68,53,50,14
+    DEFPUSHBUTTON   "Œ ",IDOK,13,64,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,68,64,50,14
     CONTROL         "White",IDC_WHITE,"Button",BS_AUTORADIOBUTTON | WS_GROUP,13,24,35,10
     CONTROL         "Black",IDC_BLACK,"Button",BS_AUTORADIOBUTTON,13,35,38,11
     LTEXT           "Your side:",IDC_STATIC,13,15,33,8
     COMBOBOX        IDC_LEVEL,69,31,48,75,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Level:",IDC_STATIC,69,16,20,8
+    CONTROL         "PvP",IDC_PVP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,13,50,28,10
+    CONTROL         "Misere",IDC_MISERE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,68,50,37,10
 END
 
 
@@ -179,12 +177,12 @@ END
 #ifdef APSTUDIO_INVOKED
 GUIDELINES DESIGNINFO
 BEGIN
-    IDD_CPUGAME, DIALOG
+    IDD_NEWGAME, DIALOG
     BEGIN
         LEFTMARGIN, 5
         RIGHTMARGIN, 120
         TOPMARGIN, 7
-        BOTTOMMARGIN, 67
+        BOTTOMMARGIN, 81
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -196,8 +194,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,3,0,0
- PRODUCTVERSION 1,3,0,0
+ FILEVERSION 1,4,0,0
+ PRODUCTVERSION 1,4,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -214,12 +212,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "YurkoFlisk"
             VALUE "FileDescription", "Checkers executable file"
-            VALUE "FileVersion", "1.3.0.0"
+            VALUE "FileVersion", "1.4.0.0"
             VALUE "InternalName", "Checkers.exe"
             VALUE "LegalCopyright", "YurkoFlisk Copyright (C) 2016"
             VALUE "OriginalFilename", "Checkers.exe"
             VALUE "ProductName", "Checkers"
-            VALUE "ProductVersion", "1.3.0.0"
+            VALUE "ProductVersion", "1.4.0.0"
         END
     END
     BLOCK "VarFileInfo"

@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// constants.h, version 1.3
+// constants.h, version 1.4
 
 #pragma once
 #ifndef _CONSTANTS_H
@@ -30,18 +30,35 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 CONSTEXPR const char* CLASS_NAME = "Checkers";
 CONSTEXPR const char* MAIN_TITLE = "Checkers";
 CONSTEXPR const char* LAST_GAME_FILE = "last_game.txt";
-CONSTEXPR size_t MAIN_WIDTH = 480;
-CONSTEXPR size_t MAIN_HEIGHT = 520;
-CONSTEXPR size_t CELL_SIZE = 50;
-CONSTEXPR size_t BOARD_LEFT = 30;
-CONSTEXPR size_t BOARD_TOP = 30;
-CONSTEXPR size_t BOARD_RIGHT = BOARD_LEFT + 8 * CELL_SIZE;
-CONSTEXPR size_t BOARD_BOTTOM = BOARD_TOP + 8 * CELL_SIZE;
-CONSTEXPR size_t D_QUEEN = 15;
-CONSTEXPR size_t D_ROW = 15;
-CONSTEXPR size_t D_COLUMN = 15;
-CONSTEXPR size_t D_TURN = 20;
-CONSTEXPR size_t STEP_SLEEP_TIME = 250;
+CONSTEXPR int MAIN_WIDTH = 480;
+CONSTEXPR int MAIN_HEIGHT = 520;
+CONSTEXPR int D_PIECE = 1;
+CONSTEXPR int D_QUEEN = 15;
+CONSTEXPR int D_ROW = 15;
+CONSTEXPR int D_COLUMN = 15;
+CONSTEXPR int D_TURN = 20;
+CONSTEXPR int D_SELECTED = 2;
+CONSTEXPR int D_POSSIBLE = 2;
+CONSTEXPR int SELECTED_PEN_WIDTH = 2;
+CONSTEXPR int POSSIBLE_PEN_WIDTH = 2;
+CONSTEXPR int CELL_SIZE = 50;
+CONSTEXPR int SELECTED_SIZE = CELL_SIZE - 2 * D_SELECTED;
+CONSTEXPR int POSSIBLE_SIZE = CELL_SIZE - 2 * D_POSSIBLE;
+CONSTEXPR int PIECE_SIZE = CELL_SIZE - 2 * D_PIECE;
+CONSTEXPR int CROWN_SIZE = CELL_SIZE - 2 * D_QUEEN;
+CONSTEXPR int BOARD_LEFT = 30;
+CONSTEXPR int BOARD_TOP = 30;
+CONSTEXPR int BOARD_RIGHT = BOARD_LEFT + 8 * CELL_SIZE;
+CONSTEXPR int BOARD_BOTTOM = BOARD_TOP + 8 * CELL_SIZE;
+CONSTEXPR int STEP_SLEEP_TIME = 250;
+CONST Gdiplus::Color C_LTGRAY = Gdiplus::Color(192, 192, 192);
+CONST Gdiplus::Color C_GRAY = Gdiplus::Color(160, 160, 160);
+CONST Gdiplus::Color C_BROWN = Gdiplus::Color(139, 69, 19);
+CONST Gdiplus::Color C_BLACK = Gdiplus::Color(0, 0, 0);
+CONST Gdiplus::Color C_GREEN = Gdiplus::Color(20, 255, 20);
+CONST Gdiplus::Color C_BLUE = Gdiplus::Color(20, 20, 255);
+CONST Gdiplus::Color C_YELLOW = Gdiplus::Color(216, 216, 20);
+CONST Gdiplus::Color C_SHADOW = Gdiplus::Color(87, 77, 162, 49);
 #if defined _DEBUG || defined DEBUG
  CONSTEXPR size_t LEVELS_COUNT = 8;
  CONSTEXPR size_t HINT_DEPTH = 8;

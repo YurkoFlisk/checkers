@@ -19,15 +19,18 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// checkers.cpp, version 1.3
+// checkers.cpp, version 1.4
 
 #include "checkers.h"
 
+const int Checkers::NORMAL_COLUMN_WEIGHT[8] = {
+	0, 2, 4, 9, 9, 4, 2, 0
+};
 const int Checkers::NORMAL_ROW_WEIGHT_WHITE[8] = {
-	0, 3, 5, 10, 20, 25, 30, -1
+	0, 3, 6, 13, 20, 25, 35, -1
 }; // -1 - unused
 const int Checkers::NORMAL_ROW_WEIGHT_BLACK[8] = {
-	-1, 30, 25, 20, 10, 5, 3, 0
+	-1, 35, 25, 20, 13, 6, 3, 0
 }; // -1 - unused
 const int Checkers::MAX_TRANSTABLE_MAKE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
 	-1, 0, 1, 2, 2, 2, 3, 3, 4
@@ -41,72 +44,53 @@ const int Checkers::MIN_TRANSTABLE_USE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
 	, 4, 5, 6, 6
 #endif
 }; // -1 - unused
+const int Checkers::MAX_HISTORY_MAKE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
+	0, 0, 0, 0, 1, 2, 3, 4, 5
+#if !defined _DEBUG && !defined DEBUG
+	, 6, 7, 8, 9
+#endif
+};
+const int Checkers::HISTORY_VALUE[Checkers::MAX_SEARCH_DEPTH + 1] = {
+	0, 0, 0, 0x1, 0x2, 0x4, 0x8, 0x10, 0x20
+#if !defined _DEBUG && !defined DEBUG
+	, 0x40, 0x80, 0x100, 0x200
+#endif
+};
 
-Piece::Piece(void) noexcept
-	: queen(false), color(EMPTY)
-{}
-
-Piece::Piece(colour c, bool q) noexcept
-	: queen(q), color(c)
-{}
-
-bool Piece::operator==(const Piece& rhs) const noexcept
-{
-	return color == rhs.color && queen == rhs.queen;
-}
-
-bool Piece::operator!=(const Piece& rhs) const noexcept
-{
-	return color != rhs.color || queen != rhs.queen;
-}
-
-position::position(void) noexcept
-	: row(0), column(0)
-{}
-
-position::position(int r, int c) noexcept
-	: row(r), column(c)
-{}
-
-bool position::operator==(const position& rhs) const noexcept
-{
-	return row == rhs.row && column == rhs.column;
-}
-
-bool position::operator!=(const position& rhs) const noexcept
-{
-	return row != rhs.row || column != rhs.column;
-}
-
-Checkers::Checkers(bool white) noexcept
+Checkers::Checkers(bool mis, bool white) noexcept
 	: search_depth(MAX_SEARCH_DEPTH)
 {
-	restart(white);
+	restart(mis, white);
 }
 
 Checkers::~Checkers(void) noexcept
 {}
 
-void Checkers::restart(bool white) noexcept
+void Checkers::restart(bool mis, bool white) noexcept
 {
 	board[3][1] = board[3][3] = board[3][5] = board[3][7] =
-		board[4][0] = board[4][2] = board[4][4] = board[4][6] = Piece(EMPTY);
+		board[4][0] = board[4][2] = board[4][4] = board[4][6] = Piece(PT_EMPTY);
 	board[0][0] = board[0][2] = board[0][4] = board[0][6] =
 		board[1][1] = board[1][3] = board[1][5] = board[1][7] =
-		board[2][0] = board[2][2] = board[2][4] = board[2][6] = Piece(WHITE);
+		board[2][0] = board[2][2] = board[2][4] = board[2][6] = Piece(WHITE_SIMPLE);
 	board[5][1] = board[5][3] = board[5][5] = board[5][7] =
 		board[6][0] = board[6][2] = board[6][4] = board[6][6] =
-		board[7][1] = board[7][3] = board[7][5] = board[7][7] = Piece(BLACK);
+		board[7][1] = board[7][3] = board[7][5] = board[7][7] = Piece(BLACK_SIMPLE);
 	white_turn = white;
+	misere = mis;
 	state = GAME_CONTINUE;
 	_last_ai_use_ply = 0;
-	_cur_possible_moves.clear();
-	_cur_move.clear();
 	_position_count.clear();
 	_transtable_white.clear();
 	_transtable_black.clear();
 	undos.swap(decltype(undos)());
 	redos.swap(decltype(redos)());
+	_update_possible_moves();
+	for (auto killer : killers)
+		killer.clear();
+	for (int i = 0; i < 64; ++i)
+		for (int j = 0; j < 64; ++j)
+			history[i][j] = 0;
 }
 
 int Checkers::score(void) const noexcept
@@ -114,97 +98,91 @@ int Checkers::score(void) const noexcept
 	int sc(0);
 	for (size_t row = 0; row < 8; ++row)
 		for (size_t column = row & 1; column < 8; column += 2)
-			if (board[row][column].color == WHITE)
-				sc += (board[row][column].queen ? QUEEN_WEIGHT : (NORMAL_WEIGHT + NORMAL_ROW_WEIGHT_WHITE[row]));
-			else if (board[row][column].color == BLACK)
-				sc -= (board[row][column].queen ? QUEEN_WEIGHT : (NORMAL_WEIGHT + NORMAL_ROW_WEIGHT_BLACK[row]));
-	return sc;
+			if (board[row][column].get_colour() == WHITE)
+				sc += (board[row][column].is_queen() ? QUEEN_WEIGHT : (NORMAL_WEIGHT +
+					NORMAL_ROW_WEIGHT_WHITE[row] + NORMAL_COLUMN_WEIGHT[column]));
+			else if (board[row][column].get_colour() == BLACK)
+				sc -= (board[row][column].is_queen() ? QUEEN_WEIGHT : (NORMAL_WEIGHT +
+					NORMAL_ROW_WEIGHT_BLACK[row] + NORMAL_COLUMN_WEIGHT[column]));
+	return misere ? -sc : sc;
 }
 
-void Checkers::_perform_move(const Move& move, move_info& undo)
-{
-	undo.oldpos = move[0], undo.newpos = move.back();
-	undo.original = board[move[0].row][move[0].column];
-	board[move[0].row][move[0].column] = Piece();
-	bool queen = undo.original.queen;
-	for (size_t i = 1; i < move.size(); ++i)
-	{
-		if (queen == false) // If piece is simple
-		{
-			if (abs(move[i].row - move[i - 1].row) == 2) // If capture-move
-			{
-				undo.eaten.push_back(std::make_pair(position((move[i - 1].row + move[i].row) >> 1,
-					(move[i - 1].column + move[i].column) >> 1), between(move[i - 1], move[i])));
-				between(move[i - 1], move[i]) = Piece();
-			}
-		}
-		else // If piece is queen
-		{
-			const int d_row = (move[i].row < move[i - 1].row ? -1 : 1), d_column = (move[i].column < move[i - 1].column ? -1 : 1);
-			for (int row = move[i - 1].row + d_row, column = move[i - 1].column + d_column; row != move[i].row; row += d_row, column += d_column)
-				if (board[row][column].color != EMPTY)
-				{
-					undo.eaten.push_back(std::make_pair(position(row, column), board[row][column]));
-					board[row][column] = Piece();
-					break;
-				}
-		}
-		if (move[i].row == (undo.original.color == WHITE ? 7 : 0)) // If reaches last row, piece become queen
-			queen = true;
-	}
-	board[move.back().row][move.back().column].color = undo.original.color;
-	board[move.back().row][move.back().column].queen = queen;
-	undo.become = board[move.back().row][move.back().column];
-}
-
-void Checkers::_undo_move(const move_info& undo)
-{
-	board[undo.newpos.row][undo.newpos.column] = Piece();
-	board[undo.oldpos.row][undo.oldpos.column] = undo.original;
-	for (size_t i = 0; i < undo.eaten.size(); ++i)
-		board[undo.eaten[i].first.row][undo.eaten[i].first.column] = undo.eaten[i].second;
-}
-
-void Checkers::_redo_move(const move_info& redo)
-{
-	for (size_t i = 0; i < redo.eaten.size(); ++i)
-		board[redo.eaten[i].first.row][redo.eaten[i].first.column] = Piece();
-	board[redo.oldpos.row][redo.oldpos.column] = Piece();
-	board[redo.newpos.row][redo.newpos.column] = redo.become;
-}
-
-bool Checkers::_legal_move(const Move& move) const
+int Checkers::evaluate(int depth, int alpha, int beta)
 {
 	std::vector<Move> moves;
-	_get_all_moves(moves);
-	return std::find(moves.begin(), moves.end(), move) != moves.end();
+	get_all_moves(moves);
+	if (moves.empty())
+		return no_moves_score(depth);
+	if (moves[0].get_captured().size() == 0) // Available moves are non-capture
+		return (white_turn ? score() : -score()); // Because score() is computed for white as maximizer
+	int sc;
+	white_turn = !white_turn; // Change turn for correct work of recursion(_get_all_moves functions uses this flag)
+	for (const auto& move : moves)
+	{
+		_do_move(move);
+		sc = -evaluate(depth + 1, -beta, -alpha);
+		_undo_move(move);
+		if(sc > alpha)
+			alpha = sc;
+		if (alpha >= beta)
+			break;
+	}
+	white_turn = !white_turn; // Change turn back
+	return alpha;
 }
 
-void Checkers::set_search_depth(int depth) noexcept
+void Checkers::_undo_move(const Move& undo)
 {
-	if ((search_depth = std::max(depth, 1)) > MAX_SEARCH_DEPTH)
-		search_depth = MAX_SEARCH_DEPTH;
+	const Position& oldpos = undo.old_pos(), newpos = undo.new_pos();
+	board[newpos.get_row()][newpos.get_column()] = std::move(Piece());
+	board[oldpos.get_row()][oldpos.get_column()] = undo.get_original();
+	for (size_t i = 0; i < undo.get_captured().size(); ++i)
+		board[undo.get_captured()[i].first.get_row()][
+			undo.get_captured()[i].first.get_column()] = undo.get_captured()[i].second;
 }
 
-bool Checkers::move(const Move& m, move_info& info)
+void Checkers::_do_move(const Move& move)
 {
-	if (state != GAME_CONTINUE || !_legal_move(m))
+	const Position& oldpos = move.old_pos(), newpos = move.new_pos();
+	board[oldpos.get_row()][oldpos.get_column()] = std::move(Piece());
+	board[newpos.get_row()][newpos.get_column()] = move.get_become();
+	for (size_t i = 0; i < move.get_captured().size(); ++i)
+		board[move.get_captured()[i].first.get_row()][
+			move.get_captured()[i].first.get_column()] = std::move(Piece());
+}
+
+bool Checkers::legal_move(Move& move) const
+{
+	std::vector<Move> moves;
+	get_all_moves(moves);
+	auto move_it = std::find(moves.begin(), moves.end(), move);
+	if (move_it == moves.end())
 		return false;
-	_perform_move(m, info);
-	undos.push_back(make_pair(m, info));
+	move.set_info_from(*move_it);
+	return true;
+}
+
+bool Checkers::move(Move& m)
+{
+	part_undo();
+	if (state != GAME_CONTINUE || !legal_move(m))
+		return false;
+	_do_move(m);
+	undos.push_back(m);
 	redos.swap(decltype(redos)());
 	++_position_count[_raw_board];
 	white_turn = !white_turn; // Change turn of move
 	_update_game_state();
+	_update_possible_moves();
 	return true;
 }
 
 void Checkers::_update_game_state(void)
 {
 	std::vector<Move> vec;
-	_get_all_moves(vec);
+	get_all_moves(vec);
 	if (vec.size() == 0)
-		state = white_turn ? BLACK_WIN : WHITE_WIN;
+		state = no_moves_state();
 	else
 	{
 		bool draw = false;
@@ -218,12 +196,10 @@ void Checkers::_update_game_state(void)
 	}
 }
 
-bool Checkers::part_move(const position& pos)
+step_result Checkers::step(const Position& pos)
 {
 	if (state != GAME_CONTINUE)
-		return false;
-	if (_cur_move.empty())
-		_get_all_moves(_cur_possible_moves);
+		return STEP_ILLEGAL;
 	_cur_possible_moves.erase(
 		std::remove_if(_cur_possible_moves.begin(), _cur_possible_moves.end(), [&](const Move& m) {
 		return m.size() <= _cur_move.size() || m[_cur_move.size()] != pos;
@@ -233,51 +209,58 @@ bool Checkers::part_move(const position& pos)
 		if (_cur_move.size() > 0)
 		{
 			part_undo();
-			if (board[pos.row][pos.column].color == (white_turn ? WHITE : BLACK))
-				part_move(pos);
+			return (step(pos) == STEP_PROCEED ? STEP_ILLEGAL_NEW : STEP_ILLEGAL);
 		}
 		else
-			_cur_move_info = move_info();
-		return false;
+			part_undo();
+		return STEP_ILLEGAL;
 	}
-	_cur_move.push_back(pos);
+	_cur_move.add_step(pos);
 	if (_cur_move.size() > 1)
 	{
-		move_info _cur_part;
-		_perform_move({ _cur_move[_cur_move.size() - 2], _cur_move.back() }, _cur_part);
-		_cur_move_info.eaten.insert(_cur_move_info.eaten.end(), _cur_part.eaten.begin(), _cur_part.eaten.end());
-		for (const auto& destroyed : _cur_part.eaten)
-			board[destroyed.first.row][destroyed.first.column] = Piece(SHADOW);
+		const int cur_row = _cur_move.new_pos().get_row(), cur_col = _cur_move.new_pos().get_column(),
+			prev_row = _cur_move[_cur_move.size() - 2].get_row(), prev_col = _cur_move[_cur_move.size() - 2].get_column();
+		const int d_col = (cur_col - prev_col < 0 ? -1 : 1), d_row = (cur_row - prev_row < 0 ? -1 : 1);
+		board[cur_row][cur_col] = board[prev_row][prev_col];
+		board[prev_row][prev_col] = Piece();
+		if (!board[cur_row][cur_col].is_queen() && cur_row == (white_turn ? 7 : 0))
+			board[cur_row][cur_col] = Piece(white_turn ? Piece(WHITE_QUEEN) : Piece(BLACK_QUEEN));
+		for (int row = prev_row, col = prev_col; row != cur_row; row += d_row, col += d_col)
+			if (board[row][col].get_type() != PT_EMPTY)
+			{
+				_cur_move.add_capture(std::make_pair(Position(row, col), board[row][col]));
+				board[row][col] = Piece(PT_SHADOW);
+				break; // We can't capture more than one piece in one step in legal move
+			}
 	}
 	else
-		_cur_move_info.oldpos = _cur_move[0], _cur_move_info.original = board[_cur_move[0].row][_cur_move[0].column];
-	_cur_move_info.become = board[pos.row][pos.column];
+		_cur_move.set_original(board[_cur_move[0].get_row()][_cur_move[0].get_column()]);
+	_cur_move.set_become(board[pos.get_row()][pos.get_column()]);
 	if (_cur_possible_moves.size() == 1 && _cur_possible_moves[0].size() == _cur_move.size())
 	{
-		_cur_move_info.newpos = _cur_move.back();
-		for (const auto& destroyed : _cur_move_info.eaten)
-			board[destroyed.first.row][destroyed.first.column] = Piece(EMPTY);
-		undos.push_back(make_pair(_cur_move, _cur_move_info));
+		for (const auto& destroyed : _cur_move.get_captured())
+			board[destroyed.first.get_row()][destroyed.first.get_column()] = Piece(PT_EMPTY);
+		undos.push_back(_cur_move);
 		redos.swap(decltype(redos)());
 		_cur_possible_moves.clear();
-		_cur_move.clear(), _cur_move_info = move_info();
+		_cur_move = Move();
 		++_position_count[_raw_board];
 		white_turn = !white_turn;
 		_update_game_state();
-		return true;
+		_update_possible_moves();
+		return STEP_FINISH;
 	}
-	return false;
+	return STEP_PROCEED;
 }
 
 void Checkers::part_undo(void)
 {
 	if (_cur_move.size() > 0)
 	{
-		_cur_move_info.newpos = _cur_move.back();
-		_undo_move(_cur_move_info);
-		_cur_move.clear(), _cur_move_info = move_info();
-		_cur_possible_moves.clear();
+		_undo_move(_cur_move);
+		_cur_move = Move();
 	}
+	_update_possible_moves();
 }
 
 void Checkers::undo_move(void)
@@ -286,11 +269,12 @@ void Checkers::undo_move(void)
 	if (undos.empty())
 		return;
 	--_position_count[_raw_board];
-	_undo_move(undos.back().second);
+	_undo_move(undos.back());
 	redos.push(undos.back());
 	undos.pop_back();
 	white_turn = !white_turn;
 	_update_game_state();
+	_update_possible_moves();
 }
 
 void Checkers::redo_move(void)
@@ -298,99 +282,163 @@ void Checkers::redo_move(void)
 	part_undo();
 	if (redos.empty())
 		return;
-	_redo_move(redos.top().second);
+	_do_move(redos.top());
 	undos.push_back(redos.top());
 	redos.pop();
 	++_position_count[_raw_board];
 	white_turn = !white_turn;
 	_update_game_state();
+	_update_possible_moves();
 }
 
-void Checkers::_get_all_moves(std::vector<Move>& vec) const
+template<colour TURN>
+void Checkers::get_all_moves(std::vector<Move>& vec) const
 {
 	// Search for capture-moves first
 	for (size_t row = 0; row < 8; ++row)
 		for (size_t column = row & 1; column < 8; column += 2)
-			if (board[row][column].color == current_turn_color())
+			if (board[row][column].get_colour() == TURN)
 			{
-				Move move(1, position(row, column));
-				bool capture[8][8] = {}, queen = board[row][column].queen;
+				Move move(Path(1, Position(row, column)));
+				move.set_original(board[row][column]);
+				bool capture[8][8] = {}, queen = board[row][column].is_queen();
 				tmp_assign<Piece> move_begin(const_cast<Piece&>
 					(board[row][column]), Piece()); // Because this position is empty when we move from it
 				if (queen)
-					_find_deep_capture_queen(vec, move, row, column, capture);
+					_find_deep_capture_queen<TURN>(vec, move, row, column, capture);
 				else
-					_find_deep_capture(vec, move, row, column, capture);
+					_find_deep_capture<TURN>(vec, move, row, column, capture);
 			}
 	// Capture-move is mandatory, so we need to check non-capture moves only when we don't have any capture-moves
 	if (vec.empty())
 		for (size_t row = 0; row < 8; ++row)
 			for (size_t column = row & 1; column < 8; column += 2)
-				if (board[row][column].color == current_turn_color())
+				if (board[row][column].get_colour() == TURN)
 				{
-					if (board[row][column].queen)
+					if (board[row][column].is_queen())
 					{
-						const int dx[4] = { 1, 1, -1, -1 }, dy[4] = { 1, -1, 1, -1 };
+						constexpr int dx[4] = { 1, 1, -1, -1 }, dy[4] = { 1, -1, 1, -1 };
 						for (size_t dir = 0; dir < 4; ++dir)
 							for (int r = row + dy[dir], c = column + dx[dir]; r < 8 && c < 8 && r >= 0 && c >= 0
-								&& board[r][c].color == EMPTY; r += dy[dir], c += dx[dir])
+								&& board[r][c].get_type() == PT_EMPTY; r += dy[dir], c += dx[dir])
 							{
-								Move move(1, position(row, column));
-								move.push_back(position(r, c));
-								vec.push_back(move);
+								Move move(Path(1, Position(row, column)));
+								move.add_step(Position(r, c));
+								move.set_original(board[row][column]);
+								move.set_become(TURN == WHITE ? Piece(WHITE_QUEEN) : Piece(BLACK_QUEEN));
+								vec.push_back(std::move(move));
 							}
+					}
+					else if (TURN == WHITE)
+					{
+						if (column < 7 && board[row + 1][column + 1].get_type() == PT_EMPTY)
+						{
+							Move move(Path(1, Position(row, column)));
+							move.set_original(board[row][column]);
+							move.add_step(Position(row + 1, column + 1));
+							move.set_become(row == 6 ? Piece(WHITE_QUEEN) : Piece(WHITE_SIMPLE));
+							vec.push_back(std::move(move));
+						}
+						if (column > 0 && board[row + 1][column - 1].get_type() == PT_EMPTY)
+						{
+							Move move(Path(1, Position(row, column)));
+							move.set_original(board[row][column]);
+							move.add_step(Position(row + 1, column - 1));
+							move.set_become(row == 6 ? Piece(WHITE_QUEEN) : Piece(WHITE_SIMPLE));
+							vec.push_back(std::move(move));
+						}
 					}
 					else
 					{
-						if (column < 7 && board[white_turn ? row + 1 : row - 1][column + 1].color == EMPTY)
+						if (column < 7 && board[row - 1][column + 1].get_type() == PT_EMPTY)
 						{
-							Move move(1, position(row, column));
-							move.push_back(position(white_turn ? row + 1 : row - 1, column + 1));
-							vec.push_back(move);
+							Move move(Path(1, Position(row, column)));
+							move.set_original(board[row][column]);
+							move.add_step(Position(row - 1, column + 1));
+							move.set_become(std::move(row == 1 ? Piece(BLACK_QUEEN) : Piece(BLACK_SIMPLE)));
+							vec.push_back(std::move(move));
 						}
-						if (column > 0 && board[white_turn ? row + 1 : row - 1][column - 1].color == EMPTY)
+						if (column > 0 && board[row - 1][column - 1].get_type() == PT_EMPTY)
 						{
-							Move move(1, position(row, column));
-							move.push_back(position(white_turn ? row + 1 : row - 1, column - 1));
-							vec.push_back(move);
+							Move move(Path(1, Position(row, column)));
+							move.set_original(board[row][column]);
+							move.add_step(Position(row - 1, column - 1));
+							move.set_become(std::move(row == 1 ? Piece(BLACK_QUEEN) : Piece(BLACK_SIMPLE)));
+							vec.push_back(std::move(move));
 						}
 					}
 				}
 }
 
+template<colour TURN>
 void Checkers::_find_deep_capture(std::vector<Move>& vec, Move& move, int row, int column, bool(&captured)[8][8]) const
 {
-	static CONSTEXPR int d_row[4] = { 1, 1, -1, -1 }, d_column[4] = { 1, -1, 1, -1 };
+	static constexpr int d_row[4] = { 1, 1, -1, -1 }, d_column[4] = { 1, -1, 1, -1 };
 	for (size_t dir = 0; dir < 4; ++dir)
 	{
 		const int r1 = row + d_row[dir], c1 = column + d_column[dir], r2 = r1 + d_row[dir], c2 = c1 + d_column[dir];
-		if (r2 < 0 || c2 < 0 || r2 > 7 || c2 > 7 || board[r2][c2].color != EMPTY
-			|| board[r1][c1].color != opposite(current_turn_color()) || captured[r1][c1])
+		if (r2 < 0 || c2 < 0 || r2 > 7 || c2 > 7 || board[r2][c2].get_type() != PT_EMPTY
+			|| board[r1][c1].get_colour() != opposite(TURN) || captured[r1][c1])
 			continue;
-		move.push_back(position(r2, c2)); // Correct capture-move
+		move.add_step(Position(r2, c2)); // Correct capture-move
+		move.add_capture(std::make_pair(Position(r1, c1), board[r1][c1]));
 		const size_t old = vec.size();
 		captured[r1][c1] = true; // For preventing 'recapturing' piece at (r1; c1) in moves produced by recursive call to this function(next 4 lines)
-		if (white_turn) // We can become queen at this move
-			r2 == 7 ? _find_deep_capture_queen(vec, move, r2, c2, captured) : _find_deep_capture(vec, move, r2, c2, captured);
+		if (TURN == WHITE) // We can become queen at this move
+			if (r2 == 7)
+			{
+				_find_deep_capture_queen<WHITE>(vec, move, r2, c2, captured);
+				if (old == vec.size()) // If in recursive call we haven't found any move, then 'move' is a final capture and is one of possible captures
+				{
+					move.set_become(Piece(WHITE_QUEEN));
+					vec.push_back(move);
+				}
+			}
+			else
+			{
+				_find_deep_capture<WHITE>(vec, move, r2, c2, captured);
+				if (old == vec.size()) // If in recursive call we haven't found any move, then 'move' is a final capture and is one of possible captures
+				{
+					move.set_become(Piece(WHITE_SIMPLE));
+					vec.push_back(move);
+				}
+			}
 		else
-			r2 == 0 ? _find_deep_capture_queen(vec, move, r2, c2, captured) : _find_deep_capture(vec, move, r2, c2, captured);
-		if (old == vec.size()) // If in recursive call we haven't found any move, then 'move' is a final capture and is one of possible captures
-			vec.push_back(move);
+			if (r2 == 0)
+			{
+				_find_deep_capture_queen<BLACK>(vec, move, r2, c2, captured);
+				if (old == vec.size()) // If in recursive call we haven't found any move, then 'move' is a final capture and is one of possible captures
+				{
+					move.set_become(Piece(BLACK_QUEEN));
+					vec.push_back(move);
+				}
+			}
+			else
+			{
+				_find_deep_capture<BLACK>(vec, move, r2, c2, captured);
+				if (old == vec.size()) // If in recursive call we haven't found any move, then 'move' is a final capture and is one of possible captures
+				{
+					move.set_become(Piece(BLACK_SIMPLE));
+					vec.push_back(move);
+				}
+			}
 		captured[r1][c1] = false; // For correct work on next cycles we should clear changes to 'captured' and 'move' variables
-		move.pop_back();
+		move.pop_step();
+		move.pop_capture();
 	}
 }
 
+template<colour TURN>
 void Checkers::_find_deep_capture_queen(std::vector<Move>& vec, Move& move, int row, int column, bool(&captured)[8][8]) const
 {
-	static CONSTEXPR int d_row[4] = { 1, 1, -1, -1 }, d_column[4] = { 1, -1, 1, -1 };
+	static constexpr int d_row[4] = { 1, 1, -1, -1 }, d_column[4] = { 1, -1, 1, -1 };
 	for (size_t dir = 0; dir < 4; ++dir)
 	{
 		bool capture_found = false;
 		int r1 = row + d_row[dir], c1 = column + d_column[dir];
-		for (; r1 < 7 && c1 < 7 && r1 > 0 && c1 > 0 && board[r1][c1].color != current_turn_color() &&
+		for (; r1 < 7 && c1 < 7 && r1 > 0 && c1 > 0 && board[r1][c1].get_colour() != TURN &&
 			!captured[r1][c1]; r1 += d_row[dir], c1 += d_column[dir])
-			if (board[r1][c1].color == opposite(current_turn_color()))
+			if (board[r1][c1].get_colour() == opposite(TURN))
 			{
 				capture_found = true;
 				break;
@@ -400,25 +448,42 @@ void Checkers::_find_deep_capture_queen(std::vector<Move>& vec, Move& move, int 
 		captured[r1][c1] = true;
 		const size_t old = vec.size();
 		for (int r2 = r1 + d_row[dir], c2 = c1 + d_column[dir]; r2 < 8 && c2 < 8 && r2 >= 0 && c2 >= 0 &&
-			board[r2][c2].color == EMPTY && !captured[r2][c2]; r2 += d_row[dir], c2 += d_column[dir])
+			board[r2][c2].get_type() == PT_EMPTY; r2 += d_row[dir], c2 += d_column[dir])
 		{
-			move.push_back(position(r2, c2));
-			_find_deep_capture_queen(vec, move, r2, c2, captured);
-			move.pop_back();
+			move.add_step(Position(r2, c2));
+			move.add_capture(std::make_pair(Position(r1, c1), board[r1][c1]));
+			_find_deep_capture_queen<TURN>(vec, move, r2, c2, captured);
+			move.pop_step();
+			move.pop_capture();
 		}
 		if (old == vec.size()) // If in recursive calls we haven't found any move, then any move is a final capture in this direction and is one of possible captures
-			for (int r2 = r1 + d_row[dir], c2 = c1 + d_column[dir]; r2 < 8 && c2 < 8 && r2 >= 0 && c2 >= 0 &&
-				board[r2][c2].color == EMPTY && !captured[r2][c2]; r2 += d_row[dir], c2 += d_column[dir])
-			{
-				move.push_back(position(r2, c2));
-				vec.push_back(move);
-				move.pop_back();
-			}
+			if(TURN == WHITE)
+				for (int r2 = r1 + d_row[dir], c2 = c1 + d_column[dir]; r2 < 8 && c2 < 8 && r2 >= 0 && c2 >= 0 &&
+					board[r2][c2].get_type() == PT_EMPTY; r2 += d_row[dir], c2 += d_column[dir])
+				{
+					move.add_step(Position(r2, c2));
+					move.add_capture(std::make_pair(Position(r1, c1), board[r1][c1]));
+					move.set_become(Piece(WHITE_QUEEN));
+					vec.push_back(move);
+					move.pop_step();
+					move.pop_capture();
+				}
+			else
+				for (int r2 = r1 + d_row[dir], c2 = c1 + d_column[dir]; r2 < 8 && c2 < 8 && r2 >= 0 && c2 >= 0 &&
+					board[r2][c2].get_type() == PT_EMPTY; r2 += d_row[dir], c2 += d_column[dir])
+				{
+					move.add_step(Position(r2, c2));
+					move.add_capture(std::make_pair(Position(r1, c1), board[r1][c1]));
+					move.set_become(Piece(BLACK_QUEEN));
+					vec.push_back(move);
+					move.pop_step();
+					move.pop_capture();
+				}
 		captured[r1][c1] = false;
 	}
 }
 
-bool Checkers::get_computer_move(Move& out)
+bool Checkers::get_computer_move(Move& out, int& out_score)
 {
 	if (state != GAME_CONTINUE)
 		return false;
@@ -443,56 +508,50 @@ bool Checkers::get_computer_move(Move& out)
 	_last_ai_use_ply = undos.size();
 	// Get all moves for current position
 	std::vector<Move> moves;
-	_get_all_moves(moves);
+	get_all_moves(moves);
+	if (moves.empty())
+	{
+		state = no_moves_state();
+		out_score = white_turn ? no_moves_score(0) : -no_moves_score(0);
+		return false;
+	}
 	// Minimax with alpha-beta pruning
 	if (white_turn)
 	{
-		if (moves.empty())
-		{
-			state = BLACK_WIN;
-			return false;
-		}
-		std::pair<std::vector<Move>::iterator, int> best_move = std::make_pair(moves.end(), -MAX_SCORE);
+		std::pair<std::vector<Move>::iterator, int> best_move = std::move(std::make_pair(moves.end(), -MAX_SCORE));
 		white_turn = !white_turn; // Change turn for correct work of recursion(_get_all_moves functions uses this flag)
 		for (auto it = moves.begin(); it != moves.end(); ++it)
 		{
-			move_info undo;
-			_perform_move(*it, undo);
+			_do_move(*it);
 			_black_computer_move(1, alpha, beta);
-			_undo_move(undo);
+			_undo_move(*it);
 			if (_score > best_move.second)
 				best_move.second = _score, best_move.first = it;
 			if (_score > alpha)
 				alpha = _score;
 		}
 		white_turn = !white_turn; // Change turn back
-		out = *best_move.first;
+		out = *best_move.first, out_score = best_move.second;
 		// Add this position evaluation to transposition table
 		if (0 <= MAX_TRANSTABLE_MAKE_DEPTH[search_depth])
 			_transtable_white[_raw_board] = best_move.second;
 	}
 	else
 	{
-		if (moves.empty())
-		{
-			state = WHITE_WIN;
-			return false;
-		}
-		std::pair<std::vector<Move>::iterator, int> best_move = std::make_pair(moves.end(), MAX_SCORE);
+		std::pair<std::vector<Move>::iterator, int> best_move = std::move(std::make_pair(moves.end(), MAX_SCORE));
 		white_turn = !white_turn; // Change turn for correct work of recursion(_get_all_moves functions uses this flag)
 		for (auto it = moves.begin(); it != moves.end(); ++it)
 		{
-			move_info undo;
-			_perform_move(*it, undo);
+			_do_move(*it);
 			_white_computer_move(1, alpha, beta);
-			_undo_move(undo);
+			_undo_move(*it);
 			if (_score < best_move.second)
 				best_move.second = _score, best_move.first = it;
 			if (_score < beta)
 				beta = _score;
 		}
 		white_turn = !white_turn; // Change turn back
-		out = *best_move.first;
+		out = *best_move.first, out_score = best_move.second;
 		// Add this position evaluation to transposition table
 		if (0 <= MAX_TRANSTABLE_MAKE_DEPTH[search_depth])
 			_transtable_black[_raw_board] = best_move.second;
@@ -515,12 +574,17 @@ void Checkers::_white_computer_move(size_t depth, int alpha, int beta)
 	// Reached desired depth, so evaluate this position score
 	if (depth == search_depth)
 	{
-		_score = score();
+		_score = evaluate(depth, alpha, beta);
 		return;
 	}
 	// Get all moves for current position
 	std::vector<Move> moves;
-	_get_all_moves(moves);
+	get_all_moves<WHITE>(moves);
+	if (moves.empty())
+	{
+		_score = no_moves_score(depth);
+		return;
+	}
 	// Killer heuristic
 	size_t killers_found = 0;
 	for (const auto& killer : killers[depth])
@@ -530,25 +594,33 @@ void Checkers::_white_computer_move(size_t depth, int alpha, int beta)
 				swap(moves[i], moves[killers_found++]);
 				break;
 			}
+	// History heuristic
+	sort(moves.begin() + killers_found, moves.end(), [&](const Move& lhs, const Move& rhs){
+		return _history_move_score(lhs) > _history_move_score(rhs);
+	});
 	// Minimax with alpha-beta pruning
 	int best_move = -MAX_SCORE + depth; // For black to always choose the shortest winning path
 	white_turn = !white_turn; // Change turn for correct work of recursion(_get_all_moves functions uses this flag)
 	for (size_t i = 0; i < moves.size(); ++i)
 	{
-		move_info undo;
-		_perform_move(moves[i], undo);
+		Move& cur_move = moves[i];
+		_do_move(cur_move);
 		_black_computer_move(depth + 1, alpha, beta);
-		_undo_move(undo);
+		_undo_move(cur_move);
 		if (_score > best_move)
 			best_move = _score;
 		if (_score > alpha)
 			alpha = _score;
 		if (alpha >= beta)
 		{
+			// History heuristic
+			if (depth <= MAX_HISTORY_MAKE_DEPTH[search_depth])
+				history[(cur_move.old_pos().get_row() << 3) + cur_move.old_pos().get_column()]
+				[(cur_move.new_pos().get_row() << 3) + cur_move.new_pos().get_column()] += HISTORY_VALUE[search_depth - depth];
 			// Killer heuristic
 			if (i >= killers_found) // Update killers if current move is not in killers
 			{
-				killers[depth].push_front(moves[i]);
+				killers[depth].push_front(std::move(cur_move)); // std::move ?
 				if (killers[depth].size() > MAX_KILLERS)
 					killers[depth].pop_back();
 			}
@@ -559,7 +631,7 @@ void Checkers::_white_computer_move(size_t depth, int alpha, int beta)
 	_score = best_move;
 	// Add this position evaluation to transposition table
 	if (depth <= MAX_TRANSTABLE_MAKE_DEPTH[search_depth])
-		_transtable_white[_raw_board] = best_move;
+		_transtable_white[_raw_board] = _score;
 }
 
 void Checkers::_black_computer_move(size_t depth, int alpha, int beta)
@@ -577,12 +649,17 @@ void Checkers::_black_computer_move(size_t depth, int alpha, int beta)
 	// Reached desired depth, so evaluate this position score
 	if (depth == search_depth)
 	{
-		_score = score();
+		_score = -evaluate(depth, -beta, -alpha); // Because evaluate() will maximize black 
 		return;
 	}
 	// Get all moves for current position
 	std::vector<Move> moves;
-	_get_all_moves(moves);
+	get_all_moves<BLACK>(moves);
+	if (moves.empty())
+	{
+		_score = -no_moves_score(depth);
+		return;
+	}
 	// Killer heuristic
 	size_t killers_found = 0;
 	for (const auto& killer : killers[depth])
@@ -592,25 +669,33 @@ void Checkers::_black_computer_move(size_t depth, int alpha, int beta)
 				swap(moves[i], moves[killers_found++]);
 				break;
 			}
+	// History heuristic
+	sort(moves.begin() + killers_found, moves.end(), [&](const Move& lhs, const Move& rhs) {
+		return _history_move_score(lhs) > _history_move_score(rhs);
+	});
 	// Minimax with alpha-beta pruning
 	int best_move = MAX_SCORE - depth; // For white to always choose the shortest winning path
 	white_turn = !white_turn; // Change turn for correct work of recursion(_get_all_moves functions uses this flag)
 	for (size_t i = 0; i < moves.size(); ++i)
 	{
-		move_info undo;
-		_perform_move(moves[i], undo);
+		Move& cur_move = moves[i];
+		_do_move(cur_move);
 		_white_computer_move(depth + 1, alpha, beta);
-		_undo_move(undo);
+		_undo_move(cur_move);
 		if (_score < best_move)
 			best_move = _score;
 		if (_score < beta)
 			beta = _score;
 		if (alpha >= beta)
 		{
+			// History heuristic
+			if (depth <= MAX_HISTORY_MAKE_DEPTH[search_depth])
+				history[(cur_move.old_pos().get_row() << 3) + cur_move.old_pos().get_column()]
+				[(cur_move.new_pos().get_row() << 3) + cur_move.new_pos().get_column()] += HISTORY_VALUE[search_depth - depth];
 			// Killer heuristic
 			if (i >= killers_found) // Update killers if current move is not in killers
 			{
-				killers[depth].push_front(moves[i]);
+				killers[depth].push_front(std::move(cur_move));
 				if (killers[depth].size() > MAX_KILLERS)
 					killers[depth].pop_back();
 			}
@@ -621,30 +706,32 @@ void Checkers::_black_computer_move(size_t depth, int alpha, int beta)
 	_score = best_move;
 	// Add this position evaluation to transposition table
 	if (depth <= MAX_TRANSTABLE_MAKE_DEPTH[search_depth])
-		_transtable_black[_raw_board] = best_move;
+		_transtable_black[_raw_board] = _score;
 }
 
 void Checkers::perform_computer_move(void)
 {
+	part_undo();
 	if (state != GAME_CONTINUE)
 		return;
 	Move move;
 	if (!get_computer_move(move))
 		return;
-	move_info info;
-	_perform_move(move, info);
-	undos.push_back(make_pair(move, info));
+	_do_move(move);
+	undos.push_back(move);
 	redos.swap(decltype(redos)());
 	++_position_count[_raw_board];
 	white_turn = !white_turn; // Change turn of move
 	_update_game_state();
+	_update_possible_moves();
 }
 
-bool Checkers::read_move(std::istream& istr, Move& move) throw(checkers_error)
+bool Checkers::read_move(std::istream& istr, Move& move)
 {
 	char delim, col;
 	int row;
 	std::string str_move;
+	move = Move();
 	if (!(istr >> str_move))
 		return false;
 	std::stringstream ss_move(str_move);
@@ -652,16 +739,16 @@ bool Checkers::read_move(std::istream& istr, Move& move) throw(checkers_error)
 	--row, col -= 'a';
 	if (row < 0 || row > 7 || col < 0 || col > 7 || (row & 1) != (col & 1))
 		throw(checkers_error("Position 1 is illegal"));
-	move.push_back(position(row, col));
+	move.add_step(Position(row, col));
 	for (int cur_pos = 2; ss_move >> delim; ++cur_pos)
 	{
-		if (delim != '-')
+		if (delim != '-' && delim != ':')
 			throw(checkers_error("Move has wrong format"));
 		ss_move >> col >> row;
 		--row, col -= 'a';
 		if (row < 0 || row > 7 || col < 0 || col > 7 || (row & 1) != (col & 1))
 			throw(checkers_error("Position " + std::to_string(cur_pos) + "is illegal"));
-		move.push_back(position(row, col));
+		move.add_step(Position(row, col));
 	}
 	if (move.size() == 1)
 		throw(checkers_error("Move cannot consist of only one position"));
@@ -670,12 +757,13 @@ bool Checkers::read_move(std::istream& istr, Move& move) throw(checkers_error)
 
 void Checkers::write_move(std::ostream& ostr, const Move& move)
 {
-	ostr << (char)('a' + move[0].column) << move[0].row + 1;
+	char delim = (move.get_captured().empty() ? '-' : ':');
+	ostr << (char)('a' + move[0].get_column()) << move[0].get_row() + 1;
 	for (size_t i = 1; i < move.size(); ++i)
-		ostr << '-' << (char)('a' + move[i].column) << move[i].row + 1;
+		ostr << delim << (char)('a' + move[i].get_column()) << move[i].get_row() + 1;
 }
 
-void Checkers::load_game(std::istream& istr) throw(checkers_error)
+void Checkers::load_game(std::istream& istr)
 {
 	restart();
 	Move move;
@@ -708,7 +796,15 @@ void Checkers::save_game(std::ostream& ostr) const
 {
 	for (const auto& cur : undos)
 	{
-		write_move(ostr, cur.first);
+		write_move(ostr, cur);
 		ostr << '\n';
 	}
 }
+
+// Explicit template instantiations
+template void Checkers::_find_deep_capture<WHITE>(std::vector<Move>&, Move&, int, int, bool(&)[8][8]) const;
+template void Checkers::_find_deep_capture<BLACK>(std::vector<Move>&, Move&, int, int, bool(&)[8][8]) const;
+template void Checkers::_find_deep_capture_queen<WHITE>(std::vector<Move>&, Move&, int, int, bool(&)[8][8]) const;
+template void Checkers::_find_deep_capture_queen<BLACK>(std::vector<Move>&, Move&, int, int, bool(&)[8][8]) const;
+template void Checkers::get_all_moves<WHITE>(std::vector<Move>&) const;
+template void Checkers::get_all_moves<BLACK>(std::vector<Move>&) const;
