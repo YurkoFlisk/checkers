@@ -34,6 +34,7 @@ typedef std::vector<std::pair<Position, Piece>> CaptureList;
 class Move
 {
 	friend class Checkers;
+	friend class Board;
 public:
 	Move(void) noexcept {}
 	Move(const Move& m) noexcept

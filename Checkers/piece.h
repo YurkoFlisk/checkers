@@ -25,12 +25,23 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #ifndef _PIECE_H
 #define _PIECE_H
 
-enum colour : char { EMPTY = 0, SHADOW, WHITE, BLACK };
-enum piece_type : char { PT_EMPTY = 0, PT_SHADOW, WHITE_SIMPLE, BLACK_SIMPLE, WHITE_QUEEN = 6, BLACK_QUEEN };
+enum colour : int8_t { EMPTY = 0, SHADOW, WHITE, BLACK };
+enum piece_type : int8_t { PT_EMPTY = 0, PT_SHADOW, WHITE_SIMPLE, BLACK_SIMPLE, WHITE_QUEEN = 6, BLACK_QUEEN };
+constexpr int8_t PT_COUNT = BLACK_QUEEN + 1;
 
 constexpr inline colour opposite(colour c)
 {
 	return c == WHITE ? BLACK : WHITE;
+}
+
+constexpr inline piece_type turn_simple(colour c)
+{
+	return c == WHITE ? WHITE_SIMPLE : BLACK_SIMPLE;
+}
+
+constexpr inline piece_type turn_queen(colour c)
+{
+	return c == WHITE ? WHITE_QUEEN : BLACK_QUEEN;
 }
 
 constexpr char PT_QUEEN = 1 << 2;

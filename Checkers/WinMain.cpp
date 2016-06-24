@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// WinMain.cpp, version 1.4
+// WinMain.cpp, version 1.5
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -611,6 +611,12 @@ INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
+		case IDC_PVP:
+			pvp = IsDlgButtonChecked(hDlg, IDC_PVP);
+			EnableWindow(GetDlgItem(hDlg, IDC_LEVEL), !pvp);
+			EnableWindow(GetDlgItem(hDlg, IDC_WHITE), !pvp);
+			EnableWindow(GetDlgItem(hDlg, IDC_BLACK), !pvp);
+			break;
 		}
 		break;
 	}

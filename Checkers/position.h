@@ -27,6 +27,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 
 class Position
 {
+	friend class Board;
 public:
 	constexpr Position(void) noexcept
 		: row(0), column(0) {}
@@ -68,5 +69,10 @@ private:
 	int row;
 	int column;
 };
+
+inline int pos_idx(const Position& pos) noexcept
+{
+	return (pos.get_row() << 3) + pos.get_column();
+}
 
 #endif

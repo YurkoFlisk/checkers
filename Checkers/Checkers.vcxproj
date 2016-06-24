@@ -61,7 +61,11 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <AssemblerOutput>AssemblyAndMachineCode</AssemblerOutput>
+      <AssemblerOutput>NoListing</AssemblerOutput>
+      <CLanguageStandard>c11</CLanguageStandard>
+      <CppLanguageStandard>c++1y</CppLanguageStandard>
+      <OmitFramePointers>true</OmitFramePointers>
+      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -71,10 +75,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="board.cpp" />
     <ClCompile Include="checkers.cpp" />
     <ClCompile Include="WinMain.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="board.h" />
     <ClInclude Include="checkers.h" />
     <ClInclude Include="constants.h" />
     <ClInclude Include="misc.h" />

@@ -21,6 +21,9 @@
     <ClCompile Include="WinMain.cpp">
       <Filter>Файлы исходного кода</Filter>
     </ClCompile>
+    <ClCompile Include="board.cpp">
+      <Filter>Файлы исходного кода</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="checkers.h">
@@ -45,6 +48,9 @@
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
     <ClInclude Include="position.h">
+      <Filter>Заголовочные файлы</Filter>
+    </ClInclude>
+    <ClInclude Include="board.h">
       <Filter>Заголовочные файлы</Filter>
     </ClInclude>
   </ItemGroup>
