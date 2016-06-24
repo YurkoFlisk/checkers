@@ -1,11 +1,9 @@
 # Checkers
 
-Current stable version - 1.4
+Current stable version - 1.4  
+Working draft - version 1.5  
 
-Working draft - version 1.5
-
-Checkers program with simple interface written on WinAPI with GDI+. Uses Russian checkers rules
-
+Checkers program with simple interface written on WinAPI with GDI+. Uses Russian checkers rules  
 Program's features:
 - playing pvp games
 - playing games with computer
