@@ -47,3 +47,13 @@
 * improved GUI. Now all possible moves are displayed for currently selected piece
 * started using GDI+ for GUI, added smoothing, optimized graphics
 * added ability of playing misere games
+
+###1.5
+* some GUI bugs fixed
+* added ability of saving and loading positions
+* optimized generation of legal moves
+* improved AI by modifying alpha-beta search to principal variation search
+* improved AI by modifying use of transposition table and applying Zobrist hashing. Now it's faster, more stable, gives more information
+* improved AI by wrapping PV-search into iterative deepening with aspiration windows
+* improved AI by applying stand-pat and delta pruning to quiescence search
+* improved AI evaluation by adding piece-square tables and updating score incrementally
