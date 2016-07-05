@@ -269,6 +269,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	static std::vector<Position> cur_move_used_pos;
 	static Move cpuMove; // shared between two threads
 	static std::mutex mut;
+	static std::future<void> fut;
 	static const auto ai_move = [](HWND hWnd) { // function for ai thread
 		std::lock_guard<std::mutex> lock(mut);
 		checkers.get_computer_move(cpuMove);
@@ -352,7 +353,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			if (!pvp && checkers.get_state() == GAME_CONTINUE)
 			{
 				computers_move = true; // From this moment separate thread for ai is launched
-				std::async(ai_move, hWnd);
+				fut = std::async(ai_move, hWnd);
 			}
 			else if (checkers.get_state() != GAME_CONTINUE)
 				FinishGame(hWnd);
@@ -413,7 +414,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		else if (!pvp && checkers.get_white_turn() != player_white)
 		{
 			computers_move = true;
-			std::async(ai_move, hWnd);
+			fut = std::async(ai_move, hWnd);
 		}
 		break;
 	case WM_COMMAND:
@@ -464,7 +465,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			InvalidateRect(hWnd, NULL, FALSE);
 			UpdateWindow(hWnd);
 			computers_move = true;
-			std::async(ai_hint_move, hWnd);
+			fut = std::async(ai_hint_move, hWnd);
 			break;
 		case IDM_OPENGAME:
 			if (computers_move)
