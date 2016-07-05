@@ -7,7 +7,20 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Checkers", "Checkers.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Chkrs_Benchmark", "..\Chkrs_Benchmark\Chkrs_Benchmark.vcxproj", "{9708C4EA-681E-48D1-BB08-FD72AB572781}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CheckersEngTester", "..\CheckersEngTester\CheckersEngTester.vcxproj", "{B09584F6-DB19-44BD-937D-6DC2019096D1}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CheckersEngineInterface", "..\CheckersEngineInterface\CheckersEngineInterface.vcxproj", "{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "CheckersEngine", "CheckersEngine.vcxitems", "{45D41ACC-2C3C-43D2-BC10-02AA73FFC7C7}"
+EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		CheckersEngine.vcxitems*{9708c4ea-681e-48d1-bb08-fd72ab572781}*SharedItemsImports = 4
+		CheckersEngine.vcxitems*{b09584f6-db19-44bd-937d-6dc2019096d1}*SharedItemsImports = 4
+		CheckersEngine.vcxitems*{0d5e8f5b-a86e-4ce2-b090-f177d3ebd15b}*SharedItemsImports = 4
+		CheckersEngine.vcxitems*{45d41acc-2c3c-43d2-bc10-02aa73ffc7c7}*SharedItemsImports = 9
+		CheckersEngine.vcxitems*{4188d787-74b3-4f65-b3f7-4f95fe5b5a5c}*SharedItemsImports = 4
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
 		Debug|x64 = Debug|x64
@@ -29,6 +42,22 @@ Global
 		{9708C4EA-681E-48D1-BB08-FD72AB572781}.Release|Win32.Build.0 = Release|Win32
 		{9708C4EA-681E-48D1-BB08-FD72AB572781}.Release|x64.ActiveCfg = Release|x64
 		{9708C4EA-681E-48D1-BB08-FD72AB572781}.Release|x64.Build.0 = Release|x64
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Debug|Win32.ActiveCfg = Debug|Win32
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Debug|Win32.Build.0 = Debug|Win32
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Debug|x64.ActiveCfg = Debug|x64
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Debug|x64.Build.0 = Debug|x64
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Release|Win32.ActiveCfg = Release|Win32
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Release|Win32.Build.0 = Release|Win32
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Release|x64.ActiveCfg = Release|x64
+		{B09584F6-DB19-44BD-937D-6DC2019096D1}.Release|x64.Build.0 = Release|x64
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Debug|Win32.ActiveCfg = Debug|Win32
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Debug|Win32.Build.0 = Debug|Win32
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Debug|x64.ActiveCfg = Debug|x64
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Debug|x64.Build.0 = Debug|x64
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Release|Win32.ActiveCfg = Release|Win32
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Release|Win32.Build.0 = Release|Win32
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Release|x64.ActiveCfg = Release|x64
+		{0D5E8F5B-A86E-4CE2-B090-F177D3EBD15B}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

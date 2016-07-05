@@ -34,11 +34,11 @@ namespace Gdiplus
 #include <CommCtrl.h>
 #include <commdlg.h>
 #include <fstream>
-#include <thread>
+#include <future>
 #include <mutex>
 #include "targetver.h"
 #include "resource.h"
-#include "checkers.h"
+#include "engine/checkers.h"
 #if defined _DEBUG || defined DEBUG // Memory leak detection
  #define _CRTDBG_MAP_ALLOC
  #include <cstdlib>
@@ -52,6 +52,8 @@ using namespace Gdiplus;
 #define CM_CPUMOVE WM_USER // Checkers' message - computer move
 // Global variables
 HINSTANCE hInst; // program's instance
+RECT updateRect;
+HDC hDC, hDCMem;
 Checkers checkers; // game logic
 std::ifstream in; // for file operations
 std::ofstream out; // ..
@@ -80,6 +82,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int);
 bool CreateMainWindow(HINSTANCE, int);
 void FinishGame(HWND);
 void GetPositionRect(const Position&, RECT*);
+void InvalidatePos(HWND hWnd, const Position& pos);
 void OnPaint(HDC);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
@@ -147,6 +150,12 @@ void GetPositionRect(const Position& pos, RECT* rect)
 		rect->top = BOARD_TOP + pos.get_row()*CELL_SIZE;
 	rect->right = rect->left + CELL_SIZE, rect->bottom = rect->top + CELL_SIZE;
 }
+// Invalidating given position
+void InvalidatePos(HWND hWnd, const Position& pos)
+{
+	GetPositionRect(pos, &updateRect);
+	InvalidateRect(hWnd, &updateRect, FALSE);
+}
 // Function for finishing game
 void FinishGame(HWND hWnd)
 {
@@ -164,6 +173,11 @@ void OnPaint(HDC hDC)
 {
 	Graphics graphics(hDC);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+	if (repaint_board)
+	{
+		updateRect.left = updateRect.top = 0, updateRect.right = MAIN_WIDTH, updateRect.bottom = MAIN_HEIGHT;
+		FillRect(hDCMem, &updateRect, hBackground);
+	}
 	if (checkers.current_turn_colour() == WHITE)
 		graphics.FillEllipse(whitePieceBrush, BOARD_RIGHT, BOARD_TOP - D_TURN, D_TURN, D_TURN);
 	else
@@ -246,8 +260,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	static char ofn_buffer[MAX_OFN_CHARS];
 	static OPENFILENAMEA ofn;
 	static TEXTMETRIC tm;
-	static RECT updateRect;
-	static HDC hDC, hDCMem;
 	static HBITMAP hBMMem;
 	static HANDLE hOld;
 	static PAINTSTRUCT ps;
@@ -257,7 +269,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	static std::vector<Position> cur_move_used_pos;
 	static Move cpuMove; // shared between two threads
 	static std::mutex mut;
-	static std::thread ai; // thread for ai computations
 	static const auto ai_move = [](HWND hWnd) { // function for ai thread
 		std::lock_guard<std::mutex> lock(mut);
 		checkers.get_computer_move(cpuMove);
@@ -293,8 +304,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		hDCMem = CreateCompatibleDC(hDC);
 		hBMMem = CreateCompatibleBitmap(hDC, MAIN_WIDTH, MAIN_HEIGHT);
 		hOld = SelectObject(hDCMem, hBMMem);
-		updateRect.left = updateRect.top = 0, updateRect.right = MAIN_WIDTH, updateRect.bottom = MAIN_HEIGHT;
-		FillRect(hDCMem, &updateRect, hBackground);
 		GetTextMetrics(hDC, &tm);
 		d_ycenter = (tm.tmAscent - tm.tmDescent) / 2;
 		player_white = true;
@@ -328,31 +337,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		else
 			x_pos = 7 - (tmp_x - BOARD_LEFT) / CELL_SIZE, y_pos = 7 - (BOARD_BOTTOM - tmp_y) / CELL_SIZE;
 		for (const auto& pos : selected_part_moves)
-		{
-			GetPositionRect(pos, &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
-		}
+			InvalidatePos(hWnd, pos);
 		selected_part_moves.clear();
 		pm_result = checkers.step(Position(y_pos, x_pos));
 		if (pm_result == STEP_FINISH)
 		{
 			cur_move_used_pos.clear();
-			GetPositionRect(Position(selected_y, selected_x), &updateRect);
-			selected_x = selected_y = -1;
-			InvalidateRect(hWnd, &updateRect, FALSE);
-			GetPositionRect(Position(y_pos, x_pos), &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
+			InvalidatePos(hWnd, Position(selected_y, selected_x));
+			InvalidatePos(hWnd, Position(y_pos, x_pos));
 			for(const auto& capt : checkers.get_last_move().get_captured())
-			{
-				GetPositionRect(capt.first, &updateRect);
-				InvalidateRect(hWnd, &updateRect, FALSE);
-			}
+				InvalidatePos(hWnd, capt.first);
+			selected_x = selected_y = -1;
 			UpdateWindow(hWnd);
 			if (!pvp && checkers.get_state() == GAME_CONTINUE)
 			{
 				computers_move = true; // From this moment separate thread for ai is launched
-				ai = std::thread(ai_move, hWnd); // Launching new thread for ai
-				ai.detach();
+				std::async(ai_move, hWnd);
 			}
 			else if (checkers.get_state() != GAME_CONTINUE)
 				FinishGame(hWnd);
@@ -360,34 +360,32 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		else if (checkers[y_pos][x_pos].get_colour() == checkers.current_turn_colour())
 		{
 			cur_move_used_pos.push_back(Position(selected_y, selected_x));
-			GetPositionRect(cur_move_used_pos.back(), &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
-			GetPositionRect(Position(y_pos, x_pos), &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
-			selected_x = x_pos, selected_y = y_pos;
+			InvalidatePos(hWnd, cur_move_used_pos.back());
 			if (!checkers.get_part_move().get_captured().empty())
 			{
 				cur_move_used_pos.push_back(checkers.get_part_move().get_captured().back().first);
-				GetPositionRect(cur_move_used_pos.back(), &updateRect);
-				InvalidateRect(hWnd, &updateRect, FALSE);
+				InvalidatePos(hWnd, cur_move_used_pos.back());
 			}
+			else if (pm_result == STEP_ILLEGAL_NEW)
+			{
+				for (auto pos : cur_move_used_pos)
+					InvalidatePos(hWnd, pos);
+				cur_move_used_pos.clear();
+			}
+			InvalidatePos(hWnd, Position(y_pos, x_pos));
+			selected_x = x_pos, selected_y = y_pos;
 			if (pm_result != STEP_ILLEGAL)
 				for (const auto& move : checkers.get_part_possible_moves())
 				{
 					selected_part_moves.push_back(move[checkers.get_part_move_size()]);
-					GetPositionRect(move[checkers.get_part_move_size()], &updateRect);
-					InvalidateRect(hWnd, &updateRect, FALSE);
+					InvalidatePos(hWnd, selected_part_moves.back());
 				}
 		}
 		else if(selected_x != -1)
 		{
 			for (const auto& pos : cur_move_used_pos)
-			{
-				GetPositionRect(pos, &updateRect);
-				InvalidateRect(hWnd, &updateRect, FALSE);
-			}
-			GetPositionRect(Position(selected_y, selected_x), &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
+				InvalidatePos(hWnd, pos);
+			InvalidatePos(hWnd, Position(selected_y, selected_x));
 			selected_x = selected_y = -1;
 		}
 		break;
@@ -399,32 +397,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			checkers.step(cpuMove[i]);
 			if (i > 0)
 			{
-				GetPositionRect(cpuMove[i - 1], &updateRect);
-				InvalidateRect(hWnd, &updateRect, FALSE);
-				GetPositionRect(cpuMove[i], &updateRect);
-				InvalidateRect(hWnd, &updateRect, FALSE);
+				InvalidatePos(hWnd, cpuMove[i - 1]);
+				InvalidatePos(hWnd, cpuMove[i]);
 				if (!cpuMove.get_captured().empty())
-				{
-					GetPositionRect(cpuMove.get_captured()[i - 1].first, &updateRect);
-					InvalidateRect(hWnd, &updateRect, FALSE);
-				}
+					InvalidatePos(hWnd, cpuMove.get_captured()[i - 1].first);
 				UpdateWindow(hWnd);
 				if (i != cpuMove.size() - 1)
 					Sleep(STEP_SLEEP_TIME);
 			}
 		}
 		for (const auto& capt : checkers.get_last_move().get_captured())
-		{
-			GetPositionRect(capt.first, &updateRect);
-			InvalidateRect(hWnd, &updateRect, FALSE);
-		}
+			InvalidatePos(hWnd, capt.first);
 		if (checkers.get_state() != GAME_CONTINUE)
 			FinishGame(hWnd);
 		else if (!pvp && checkers.get_white_turn() != player_white)
 		{
 			computers_move = true;
-			ai = std::thread(ai_move, hWnd);
-			ai.detach();
+			std::async(ai_move, hWnd);
 		}
 		break;
 	case WM_COMMAND:
@@ -475,8 +464,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			InvalidateRect(hWnd, NULL, FALSE);
 			UpdateWindow(hWnd);
 			computers_move = true;
-			ai = std::thread(ai_hint_move, hWnd); // Launching new thread for ai
-			ai.detach();
+			std::async(ai_hint_move, hWnd);
 			break;
 		case IDM_OPENGAME:
 			if (computers_move)
@@ -489,6 +477,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			try
 			{
 				checkers.load_game(in);
+				MessageBox(hWnd, "Game succesfully loaded!", "Load result", MB_ICONINFORMATION);
 			}
 			catch (const checkers_error& error)
 			{
@@ -499,6 +488,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 			in.close();
 			pvp = true;
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
+			cur_move_used_pos.clear();
 			InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		case IDM_SAVEGAME:
@@ -512,6 +504,45 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			checkers.save_game(out);
 			out.close();
 			MessageBox(hWnd, "Game succesfully saved!", "Save result", MB_ICONINFORMATION);
+			break;
+		case IDM_OPENBOARD:
+			if (computers_move)
+				break;
+			ofn.Flags = OFN_HIDEREADONLY;
+			ofn.lpstrTitle = "Open position";
+			if (!GetOpenFileName(&ofn))
+				break;
+			in.open(ofn_buffer);
+			try
+			{
+				checkers.load_board(in);
+				MessageBox(hWnd, "Position succesfully loaded!", "Load result", MB_ICONINFORMATION);
+			}
+			catch (const checkers_error& error)
+			{
+				if (error.get_error_type() == error_type::WARNING)
+					MessageBox(hWnd, error.what(), "Warning", MB_ICONWARNING);
+				else
+					MessageBox(hWnd, error.what(), "Error", MB_ICONERROR);
+			}
+			in.close();
+			pvp = true;
+			selected_x = selected_y = -1;
+			selected_part_moves.clear();
+			cur_move_used_pos.clear();
+			InvalidateRect(hWnd, NULL, FALSE);
+			break;
+		case IDM_SAVEBOARD:
+			if (computers_move)
+				break;
+			ofn.Flags = OFN_NOTESTFILECREATE;
+			ofn.lpstrTitle = "Save position";
+			if (!GetSaveFileName(&ofn))
+				break;
+			out.open(ofn_buffer);
+			checkers.save_board(out);
+			out.close();
+			MessageBox(hWnd, "Position succesfully saved!", "Save result", MB_ICONINFORMATION);
 			break;
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);

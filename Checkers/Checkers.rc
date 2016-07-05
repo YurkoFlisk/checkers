@@ -36,6 +36,8 @@ BEGIN
         MENUITEM "&New game",                   IDM_NEW_GAME
         MENUITEM "&Open game",                  IDM_OPENGAME
         MENUITEM "&Save game",                  IDM_SAVEGAME
+        MENUITEM "Open position",               IDM_OPENBOARD
+        MENUITEM "Save position",               IDM_SAVEBOARD
         MENUITEM SEPARATOR
         MENUITEM "&Undo move",                  IDM_UNDO_MOVE
         MENUITEM "&Redo move",                  IDM_REDO_MOVE
@@ -81,7 +83,7 @@ CAPTION "About Checkers"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     ICON            IDR_MAINFRAME,IDC_STATIC,14,14,20,20
-    CTEXT           "Checkers, version 1.4",IDC_STATIC,42,14,114,8,SS_NOPREFIX
+    CTEXT           "Checkers, version 1.5",IDC_STATIC,42,14,114,8,SS_NOPREFIX
     CTEXT           "Copyright Yurko Prokopets(C) 2016\nLicensed under GNU GPL v3",IDC_STATIC,39,22,120,17
     DEFPUSHBUTTON   "Œ ",IDOK,116,42,50,14,WS_GROUP
 END
