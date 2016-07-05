@@ -1,18 +1,19 @@
 # Checkers
 
-Current stable version - 1.4  
-Working draft - version 1.5  
+Current stable version - 1.5  
 
 Checkers program with simple interface written on WinAPI with GDI+. Uses Russian checkers rules  
 Program's features:
-- playing pvp games
-- playing games with computer
+- normal and misere rules
+- pvp games
+- games with computer
 - AI hints
-- doing and undoing moves
+- undoing and redoing moves
+- saving and loading positions
 - saving and loading games in standard checkers notation
 
 For launching, use Checkers.exe if you have Visual C++ Redistributable 2015 installed, or Checkers_static.exe if you don't(first variant is preferable)
 
 # License
 
-Licensed under GNU GPL v3
+Licensed under GNU General Public License v3
