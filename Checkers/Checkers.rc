@@ -83,7 +83,7 @@ CAPTION "About Checkers"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
     ICON            IDR_MAINFRAME,IDC_STATIC,14,14,20,20
-    CTEXT           "Checkers, version 1.5",IDC_STATIC,42,14,114,8,SS_NOPREFIX
+    CTEXT           "Checkers, version 1.6",IDC_STATIC,42,14,114,8,SS_NOPREFIX
     CTEXT           "Copyright Yurko Prokopets(C) 2016\nLicensed under GNU GPL v3",IDC_STATIC,39,22,120,17
     DEFPUSHBUTTON   "Œ ",IDOK,116,42,50,14,WS_GROUP
 END
@@ -196,8 +196,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,5,0,0
- PRODUCTVERSION 1,5,0,0
+ FILEVERSION 1,6,0,0
+ PRODUCTVERSION 1,6,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -214,12 +214,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "YurkoFlisk"
             VALUE "FileDescription", "Checkers executable file"
-            VALUE "FileVersion", "1.5.0.0"
+            VALUE "FileVersion", "1.6.0.0"
             VALUE "InternalName", "Checkers.exe"
             VALUE "LegalCopyright", "YurkoFlisk Copyright (C) 2016"
             VALUE "OriginalFilename", "Checkers.exe"
             VALUE "ProductName", "Checkers"
-            VALUE "ProductVersion", "1.5.0.0"
+            VALUE "ProductVersion", "1.6.0.0"
         END
     END
     BLOCK "VarFileInfo"
