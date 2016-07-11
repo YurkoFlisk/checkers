@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// board.cpp, version 1.5
+// board.cpp, version 1.6
 
 #include "board.h"
 #include "misc.h"
@@ -51,6 +51,7 @@ void Board::init_zobrist(void) noexcept
 void Board::_clear_board(void)
 {
 	cur_hash = 0;
+	all_piece_count = 0;
 	for (int i = 0; i < PT_COUNT; ++i)
 		piece_count[i] = 0;
 	for (int i = 0; i < 8; ++i)
@@ -77,7 +78,9 @@ void Board::restart(bool mis, bool white) noexcept
 	misere = mis;
 	cur_ply = 0;
 	state = GAME_CONTINUE;
-	_position_count.clear();
+	(decltype(_position_count)()).swap(_position_count);
+	consecutiveQM.resize(1);
+	consecutiveQM[0] = 0;
 }
 
 bool Board::legal_move(Move& move) const
@@ -99,33 +102,42 @@ void Board::_update_game_state(void)
 		state = no_moves_state();
 	else
 	{
-		bool draw = false;
-		for (const auto& pos : _position_count)
-			if (pos.second >= DRAW_REPEATED_POS_COUNT)
-			{
-				draw = true;
-				break;
-			}
+		bool draw = consecutiveQM[cur_ply] >=
+			2 * DRAW_CONSECUTIVE_QUEEN_MOVES; // Because consequtiveQM really counts half-moves(plies)
+		if(!draw)
+			for (const auto& pos : _position_count)
+				if (pos.second >= DRAW_REPEATED_POS_COUNT)
+				{
+					draw = true;
+					break;
+				}
 		state = (draw ? DRAW : GAME_CONTINUE);
 	}
 }
 
-void Board::_proceed(void)
+void Board::_proceed(Move& m)
 {
-	++_position_count[get_hash()];
 	white_turn = !white_turn;
 	++cur_ply;
+	++_position_count[get_hash()];
+	if (consecutiveQM.size() <= cur_ply)
+		consecutiveQM.resize(cur_ply + 1);
+	if (m.get_original().is_queen())
+		consecutiveQM[cur_ply] = consecutiveQM[cur_ply - 1] + 1;
+	else
+		consecutiveQM[cur_ply] = 0;
 }
 
-void Board::_retreat(void)
+void Board::_retreat(Move& m)
 {
-	--_position_count[get_hash()];
 	white_turn = !white_turn;
 	--cur_ply;
+	--_position_count[get_hash()];
 }
 
 void Board::_put_piece(Position pos, Piece piece)
 {
+	++all_piece_count;
 	index[pos.get_row()][pos.get_column()] = piece_count[piece.get_type()]++;
 	piece_list[piece.get_type()][index[pos.get_row()][pos.get_column()]] = pos;
 	board[pos.get_row()][pos.get_column()] = piece;
@@ -141,6 +153,7 @@ void Board::_remove_piece(Position pos)
 		piece_list[cur.get_type()][piece_count[cur.get_type()]]);
 	index[last_pos.get_row()][last_pos.get_column()] = index[pos.get_row()][pos.get_column()];
 	board[pos.get_row()][pos.get_column()] = Piece();
+	--all_piece_count;
 }
 
 void Board::_do_move(const Move& move)

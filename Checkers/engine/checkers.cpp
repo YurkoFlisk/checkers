@@ -19,14 +19,15 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// checkers.cpp, version 1.5
+// checkers.cpp, version 1.6
 
 #include "checkers.h"
+#include <chrono>
 
-const int Checkers::HISTORY_VALUE[Checkers::MAX_SEARCH_DEPTH + 1] = {
-	0, 0, 0x1, 0x1, 0x2, 0x4, 0x8, 0x10, 0x20
-#if !defined _DEBUG && !defined DEBUG
-	, 0x40, 0x80, 0x100, 0x200
+const int8_t Checkers::MIN_TT_SAVE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
+	0, 0, 0, 0, 0, 0, 0, 0, 0
+#ifndef _DEBUG
+	, 0, 0, 0, 1, 2, 3, 4, 5
 #endif
 };
 int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled symmetrically in init_psq function
@@ -55,12 +56,6 @@ int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled
 		{ -15, -10, -10, -10 }
 	},{ // BLACK_QUEEN(filled symmetrically to WHITE_QUEEN in init_psq function)
 	}
-};
-const int8_t Checkers::MIN_HISTORY_MAKE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
-	0, 1, 1, 1, 1, 2, 2, 2, 2
-#if !defined _DEBUG && !defined DEBUG
-	, 2, 3, 3, 3
-#endif
 };
 
 Checkers::Checkers(bool mis, bool white) noexcept
@@ -96,8 +91,8 @@ void Checkers::restart(bool mis, bool white) noexcept
 	part_undo();
 	inc_score = 0; // It is important that it is cleared before calling Board's restart
 	Board::restart(mis, white);
-	_transtable[0].clear();
-	_transtable[1].clear();
+	std::remove_reference_t<decltype(_transtable[0])>().swap(_transtable[0]);
+	std::remove_reference_t<decltype(_transtable[1])>().swap(_transtable[1]);
 	(decltype(undos)()).swap(undos);
 	(decltype(redos)()).swap(redos);
 	_update_possible_moves();
@@ -105,7 +100,7 @@ void Checkers::restart(bool mis, bool white) noexcept
 		killer.clear();
 	for (int i = 0; i < 64; ++i)
 		for (int j = 0; j < 64; ++j)
-			history[i][j] = 0;
+			history[i][j] = butterfly[i][j] = 0;
 }
 
 inline void Checkers::_put_piece(Position pos, Piece piece)
@@ -168,7 +163,7 @@ step_result Checkers::step(const Position& pos)
 		undos.push_back(move);
 		(decltype(redos)()).swap(redos);
 		_cur_possible_moves.clear();
-		_proceed();
+		_proceed(move);
 		_update_game_state();
 		_update_possible_moves();
 		return STEP_FINISH;
@@ -195,9 +190,9 @@ bool Checkers::move(Move& m)
 	if (get_state() != GAME_CONTINUE || !legal_move(m))
 		return false;
 	_do_move(m);
+	_proceed(m);
 	undos.push_back(m);
 	(decltype(redos)()).swap(redos);
-	_proceed();
 	_update_game_state();
 	_update_possible_moves();
 	return true;
@@ -209,7 +204,7 @@ void Checkers::undo_move(void)
 	part_undo();
 	if (undos.empty())
 		return;
-	_retreat();
+	_retreat(undos.back());
 	_undo_move(undos.back());
 	redos.push(undos.back());
 	undos.pop_back();
@@ -223,9 +218,9 @@ void Checkers::redo_move(void)
 	if (redos.empty())
 		return;
 	_do_move(redos.top());
+	_proceed(redos.top());
 	undos.push_back(redos.top());
 	redos.pop();
-	_proceed();
 	_update_game_state();
 	_update_possible_moves();
 }
@@ -241,7 +236,7 @@ void Checkers::perform_computer_move(void)
 	_do_move(move);
 	undos.push_back(move);
 	(decltype(redos)()).swap(redos);
-	_proceed();
+	_proceed(move);
 	_update_game_state();
 	_update_possible_moves();
 }
@@ -249,8 +244,16 @@ void Checkers::perform_computer_move(void)
 inline int16_t Checkers::score(void) const noexcept
 {
 	int16_t sc(inc_score);
-	sc += NORMAL_WEIGHT*(piece_count[WHITE_SIMPLE] - piece_count[BLACK_SIMPLE]);
-	sc += QUEEN_WEIGHT*(piece_count[WHITE_QUEEN] - piece_count[BLACK_QUEEN]);
+	if (all_piece_count < 10)
+	{
+		sc += NORMAL_WEIGHT_ENDGAME*(piece_count[WHITE_SIMPLE] - piece_count[BLACK_SIMPLE]);
+		sc += QUEEN_WEIGHT_ENDGAME*(piece_count[WHITE_QUEEN] - piece_count[BLACK_QUEEN]);
+	}
+	else
+	{
+		sc += NORMAL_WEIGHT*(piece_count[WHITE_SIMPLE] - piece_count[BLACK_SIMPLE]);
+		sc += QUEEN_WEIGHT*(piece_count[WHITE_QUEEN] - piece_count[BLACK_QUEEN]);
+	}
 	return get_misere() ? -sc : sc;
 }
 
@@ -282,11 +285,16 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 	++cur_ply;
 	for (const auto& move : moves)
 	{
+		// Do move
 		_do_move(move);
+		// Search
 		_score = -evaluate<opposite(TURN)>(-beta, -alpha);
+		// Undo move
 		_undo_move(move);
+		// Update alpha
 		if (_score > alpha)
 			alpha = _score;
+		// Beta-cutoff
 		if (alpha >= beta)
 			break;
 	}
@@ -297,58 +305,96 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 template<colour TURN>
 bool Checkers::get_computer_move(Move& out, int& out_score)
 {
+	// Return if the game is not active
 	if (get_state() != GAME_CONTINUE)
 		return false;
 	// Get all moves for current position
 	std::vector<Move> moves;
 	get_all_moves<TURN>(moves);
+	// If no moves, return immediately
 	if (moves.empty())
 	{
 		state = no_moves_state();
 		out_score = no_moves_score(cur_ply);
 		return false;
 	}
-	// Make sure killers size is sufficient
+	// Make sure killers vector size is sufficient
 	if ((++cur_ply) + MAX_SEARCH_DEPTH > killers.size())
 		killers.resize(cur_ply + MAX_SEARCH_DEPTH);
-	// History heuristic
-	sort(moves.begin(), moves.end(), [&](const Move& lhs, const Move& rhs) {
-		return _history_move_score(lhs) > _history_move_score(rhs);
+	// Relative history heuristic
+	std::sort(moves.begin(), moves.end(), [this](const Move& lhs, const Move& rhs) {
+		return _history_greater(lhs, rhs);
 	});
+	// Configuring start time
+	auto start_time = std::chrono::high_resolution_clock::now();
 	// Main iterative deepening loop
 	out_score = 0;
 	for (int depth = 1; depth <= search_depth; ++depth)
 	{
+		// Time control
+		auto cur_time = std::chrono::high_resolution_clock::now();
+		float time_elapsed = std::chrono::duration_cast<
+			std::chrono::milliseconds>(cur_time - start_time).count();
+		if (time_elapsed >= 0.6f * MAX_THINKING_TIME)
+			break;
 		// Principal variation search with aspiration windows
 		int16_t delta = 21, best_score;
 		int16_t alpha = std::max(out_score - delta, -MAX_SCORE),
 			beta = std::min(out_score + delta, +MAX_SCORE);
 		auto best_move = moves.end();
+		// Whether late move reduction is on here
+		const bool LMR_on = (depth > LMR_MIN_DEPTH && moves[0].get_captured().size() == 0);
+		// Search until the score will be strictly inside an aspiration window (alpha; beta)
 		while (true)
 		{
 			best_score = alpha;
 			int raised_alpha_cnt = 0, move_idx = 0;
+			// Main search loop
 			for (; move_idx < moves.size(); ++move_idx)
 			{
 				auto it = moves.begin() + move_idx;
+				// Do move
 				_do_move(*it);
-				if (raised_alpha_cnt < 2)
-					_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -best_score);
+				// Check for threefold repetition draw
+				if (++_position_count[get_hash()] == DRAW_REPEATED_POS_COUNT)
+					_score = 0;
+				// If not draw, do a normal search
 				else
 				{
-					_score = -_pvs<opposite(TURN)>(depth - 1, -best_score - 1, -best_score);
-					if (beta > _score && _score > best_score)
-						_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+					// Late move reduction
+					bool do_full_search = false;
+					if (LMR_on && move_idx > 4)
+					{
+						_score = -_pvs<opposite(TURN)>(depth - 2, -best_score, -best_score + 1);
+						if (_score >= alpha)
+							do_full_search = true;
+					}
+					else
+						do_full_search = true;
+					// Principal variation search if LMR is skipped or fails high
+					if (do_full_search)
+						if (raised_alpha_cnt < 2)
+							_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -best_score);
+						else
+						{
+							_score = -_pvs<opposite(TURN)>(depth - 1, -best_score - 1, -best_score);
+							if (beta > _score && _score > best_score)
+								_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+						}
 				}
+				// Undo move
+				--_position_count[get_hash()];
 				_undo_move(*it);
+				// Update best_score
 				if (_score > best_score)
 					best_score = _score, best_move = it, ++raised_alpha_cnt;
+				// Beta-cutoff
 				if (best_score >= beta)
 					break;
 			}
 			// Update delta
 			delta += delta / 3;
-			// Update alpha and beta
+			// Update aspiration window (alpha and beta)
 			if (best_score <= alpha) // fail-low
 			{
 				beta = (best_score + beta) / 2;
@@ -359,15 +405,16 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 				alpha = (alpha + best_score) / 2;
 				beta = std::min(best_score + delta, +MAX_SCORE);
 			}
+			// If best_score is strictly inside the aspiration window, it is exact
 			else
 				break;
 		}
 		// Update moves list
 		// In next iteration current best move will be examined first
 		swap(*best_move, moves.front());
-		// History heuristic
-		sort(moves.begin() + 1, moves.end(), [&](const Move& lhs, const Move& rhs) {
-			return _history_move_score(lhs) > _history_move_score(rhs);
+		// Relative history heuristic
+		std::sort(moves.begin() + 1, moves.end(), [this](const Move& lhs, const Move& rhs) {
+			return _history_greater(lhs, rhs);
 		});
 		// Set out score
 		out_score = best_score;
@@ -376,7 +423,7 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	// Add this position evaluation to transposition table
 	TT_Entry& entry = _transtable[TURN - WHITE][get_hash()];
 	entry.value = value_to_tt(out_score, cur_ply);
-	entry.depth = 0;
+	entry.depth = search_depth;
 	entry.best_move_from = out.old_pos();
 	entry.best_move_to = out.new_pos();
 	entry.bound_type = TTBOUND_EXACT;
@@ -394,12 +441,12 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 	beta = std::min(beta, win_score(cur_ply + 1));
 	if (alpha >= beta)
 		return alpha;
-	// Use transposition table
-	bool pv_search = true;
+	// Define some variables
 	int16_t old_alpha = alpha, best_score = lose_score(cur_ply);
 	std::vector<Move> moves;
 	size_t killers_last, move_idx = 0;
 	auto tt_it = _transtable[TURN - WHITE].find(get_hash());
+	// Use transposition table
 	if (tt_it != _transtable[TURN - WHITE].end())
 	{
 		if (tt_it->second.depth >= depth)
@@ -417,9 +464,9 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		// EXPERIMENTAL AUTHOR's HEURISTIC(Lesser transposition pruning)
 		else if (tt_it->second.depth + 2 >= depth)
 		{
-			if (tt_it->second.bound_type == TTBOUND_LOWER || tt_it->second.bound_type == TTBOUND_EXACT)
+			if (alpha > MAX_LOSE_SCORE && tt_it->second.bound_type != TTBOUND_UPPER)
 				alpha = std::max<int16_t>(alpha, value_from_tt(tt_it->second, cur_ply) - LT_PRUNING_MARGIN);
-			if (tt_it->second.bound_type == TTBOUND_UPPER || tt_it->second.bound_type == TTBOUND_EXACT)
+			if (beta < MIN_WIN_SCORE && tt_it->second.bound_type != TTBOUND_LOWER)
 				beta = std::min<int16_t>(beta, value_from_tt(tt_it->second, cur_ply) + LT_PRUNING_MARGIN);
 		}
 		if (alpha >= beta)
@@ -443,6 +490,23 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		if (moves.empty())
 			return no_moves_score(cur_ply);
 	}
+	// Enhanced transposition cutoff
+	if (depth >= ETC_MIN_DEPTH)
+	{
+		++cur_ply;
+		for (const auto& move : moves)
+		{
+			_do_move(move);
+			auto etc_it = _transtable[opposite(TURN) - WHITE].find(get_hash());
+			if (etc_it != _transtable[opposite(TURN) - WHITE].end() && etc_it->second.depth >= depth - 1
+				&& etc_it->second.bound_type != TTBOUND_LOWER)
+				alpha = std::max<int16_t>(alpha, -value_from_tt(etc_it->second, cur_ply));
+			_undo_move(move);
+		}
+		--cur_ply;
+		if (alpha >= beta)
+			return alpha;
+	}
 	// Killer heuristic
 	for (const auto& killer : killers[cur_ply])
 		for (size_t i = killers_last; i < moves.size(); ++i)
@@ -451,62 +515,107 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				swap(moves[i], moves[killers_last++]);
 				break;
 			}
-	// History heuristic
-	sort(moves.begin() + killers_last, moves.end(), [&](const Move& lhs, const Move& rhs) {
-		return _history_move_score(lhs) > _history_move_score(rhs);
+	// Relative history heuristic
+	std::sort(moves.begin() + killers_last, moves.end(), [this](const Move& lhs, const Move& rhs) {
+		return _history_greater(lhs, rhs);
 	});
-	// Principal variation search
+	// Whether late move reduction is on here
+	const bool LMR_on = (depth >= LMR_MIN_DEPTH && moves[0].get_captured().size() == 0),
+		PV = (beta - alpha == 1), // Whether we are in a PV-Node
+		FP_on = (depth == 1 && moves[0].get_captured().size() == 0
+			&& alpha > MAX_LOSE_SCORE); // Whether futility pruning is on here
+	// Main search loop
 	auto best_move = moves.end();
+	bool pv_search = true;
 	for (++cur_ply; move_idx < moves.size(); ++move_idx)
 	{
-		Move& cur_move = moves[move_idx];
+		const Move& cur_move = moves[move_idx];
+		// Do move
 		_do_move(cur_move);
-		if (pv_search)
-			_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -alpha);
+		// Check for threefold repetition draw
+		if (++_position_count[get_hash()] == DRAW_REPEATED_POS_COUNT)
+			_score = 0;
+		// If not draw, do a normal search
 		else
 		{
-			_score = -_pvs<opposite(TURN)>(depth - 1, -alpha - 1, -alpha);
-			if (beta > _score && _score > alpha)
-				_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+			// Futility pruning
+			if (FP_on && best_score > MAX_LOSE_SCORE && score() + FUTILITY_MARGIN <= alpha)
+			{
+				--_position_count[get_hash()];
+				_undo_move(cur_move);
+				continue;
+			}
+			// Late move reduction
+			bool do_search = false;
+			if (LMR_on && move_idx > 2)
+			{
+				_score = -_pvs<opposite(TURN)>(depth - (!PV && move_idx > 4 ? 3 : 2), -alpha, -alpha + 1);
+				if (_score >= alpha) // If reduced search returns score above alpha, do a full research
+					do_search = true;
+			}
+			else
+				do_search = true;
+			// Principal variation search if LMR is skipped or fails high
+			if (do_search)
+				if (pv_search)
+					_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -alpha);
+				else
+				{
+					_score = -_pvs<opposite(TURN)>(depth - 1, -alpha - 1, -alpha);
+					if (beta > _score && _score > alpha)
+						_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+				}
 		}
+		// Undo move
+		--_position_count[get_hash()];
 		_undo_move(cur_move);
+		// Update best score and alpha
 		if (_score > best_score)
+		{
 			best_score = _score, best_move = moves.begin() + move_idx;
-		if (_score > alpha)
-			alpha = _score, pv_search = false; // pv_search = false here?
+			if (_score > alpha)
+				alpha = _score, pv_search = false; // pv_search = false here?
+		}
+		// Beta-cutoff
 		if (alpha >= beta)
 		{
-			// History heuristic
-			if (depth >= MIN_HISTORY_MAKE_DEPTH[search_depth])
-				history[pos_idx(cur_move.old_pos())][pos_idx(cur_move.new_pos())] += HISTORY_VALUE[depth];
-			// Killer heuristic
-			if (move_idx >= killers_last) // Update killers if current move is not in killers
+			// Update history counters
+			history[pos_idx(cur_move.old_pos())][pos_idx(cur_move.new_pos())] += depth * depth; // OR depth ??
+			// Update butterfly counters for all previous moves
+			for (int i = 0; i < move_idx; ++i)
+				butterfly[pos_idx(moves[i].old_pos())][pos_idx(moves[i].new_pos())] += depth;
+			// Update killer heuristic
+			if (move_idx >= killers_last) // If current move is not in killers
 			{
 				killers[cur_ply].push_front(cur_move);
 				if (killers[cur_ply].size() > MAX_KILLERS)
 					killers[cur_ply].pop_back();
 			}
+			// Cutoff
 			break;
 		}
 	}
 	--cur_ply;
 	// Add this position evaluation to transposition table
-	if (tt_it == _transtable[TURN - WHITE].end() || depth > tt_it->second.depth)
+	// First check whether we are too close to the horizon at higher search depthes(for not getting too large)
+	// It's temporarily, preffered way is to make special hash table instead of unordered_map and use aging there
+	if (depth >= MIN_TT_SAVE_DEPTH[search_depth] &&
+		tt_it == _transtable[TURN - WHITE].end() || depth >= tt_it->second.depth)
 	{
 		TT_Entry& entry = (tt_it == _transtable[TURN - WHITE].end() ?
 			_transtable[TURN - WHITE][get_hash()] : tt_it->second);
-		entry.value = value_to_tt(alpha, cur_ply);
+		entry.value = value_to_tt(best_score, cur_ply);
 		entry.depth = depth;
 		entry.best_move_from = best_move->old_pos();
 		entry.best_move_to = best_move->new_pos();
-		if (alpha <= old_alpha)
+		if (best_score <= old_alpha)
 			entry.bound_type = TTBOUND_UPPER;
 		else if (alpha < beta)
 			entry.bound_type = TTBOUND_EXACT;
 		else
 			entry.bound_type = TTBOUND_LOWER;
 	}
-	return alpha;
+	return best_score; // !!!!! NOT ALPHA !!!!!
 }
 
 void Checkers::load_game(std::istream& istr)

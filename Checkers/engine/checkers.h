@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// checkers.h, version 1.5
+// checkers.h, version 1.6
 
 #pragma once
 #ifndef _CHECKERS_H
@@ -56,16 +56,21 @@ public:
 	static constexpr int MAX_KILLERS = 3; // Maximum numbers of killers for killer heuristic(AI)
 	static constexpr int16_t NORMAL_WEIGHT = 100; // Weight of non-queen piece in score function
 	static constexpr int16_t QUEEN_WEIGHT = 300; // Weight of queen piece in score function
+	static constexpr int16_t NORMAL_WEIGHT_ENDGAME = 140; // Weight of non-queen piece in score function in endgame
+	static constexpr int16_t QUEEN_WEIGHT_ENDGAME = 315; // Weight of queen piece in score function in endgame
 	static constexpr int16_t DELTA_PRUNING_MARGIN = 500; // Safety margin for delta pruning in quiscence search
 	static constexpr int16_t LT_PRUNING_MARGIN = 300; // Safety margin for LT pruning
 	static constexpr int16_t STAND_PAT_MARGIN = 300; // Safety margin for stand-pat pruning
+	static constexpr int16_t FUTILITY_MARGIN = 300; // Futility pruning margin
+	static constexpr int8_t LMR_MIN_DEPTH = 3; // Minimum search depth where late move reduction can be applied
+	static constexpr int8_t ETC_MIN_DEPTH = 2; // Minimum search depth where enhanced transposition cutoff can be applied
+	static constexpr float MAX_THINKING_TIME = 5000.0f; // Maximum thinking time, ms
 #if defined _DEBUG || defined DEBUG
 	static constexpr int8_t MAX_SEARCH_DEPTH = 8; // Maximum search depth of AI
 #else
-	static constexpr int8_t MAX_SEARCH_DEPTH = 12; // Maximum search depth of AI
+	static constexpr int8_t MAX_SEARCH_DEPTH = 16; // Maximum search depth of AI
 #endif
-	static const int8_t MIN_HISTORY_MAKE_DEPTH[MAX_SEARCH_DEPTH + 1]; // Maximum depth where history values will be stored
-	static const int HISTORY_VALUE[MAX_SEARCH_DEPTH + 1]; // Value added for move which was searched with depth, equal to index
+	static const int8_t MIN_TT_SAVE_DEPTH[MAX_SEARCH_DEPTH + 1];
 	// Constructor
 	Checkers(bool = false, bool = true) noexcept;
 	// Destructor
@@ -122,6 +127,7 @@ protected:
 	static inline int16_t win_score(int16_t) noexcept;
 	inline int16_t no_moves_score(int16_t) const noexcept;
 	inline int _history_move_score(const Move&) const;
+	inline bool _history_greater(const Move&, const Move&) const;
 	inline void _update_possible_moves(void);
 	// Internal logic of AI(principal variation search)
 	template<colour>
@@ -139,7 +145,8 @@ protected:
 	std::vector<Move> _cur_possible_moves; // Internal member for step function
 	TranspositionTable _transtable[2]; // Scores for some of already computed positions where 0 is white's turn and 1 is black's
 	std::vector<std::list<Move> > killers; // Killers for killer heuristic in AI(indexed by ply)
-	int history[64][64]; // History table for history heuristic in AI
+	int history[64][64]; // History table for relative history heuristic in AI
+	int butterfly[64][64]; // Butterfly table for relative history heuristic in AI
 };
 
 inline int8_t Checkers::get_search_depth(void) const noexcept
@@ -238,6 +245,13 @@ inline int16_t Checkers::no_moves_score(int16_t ply) const noexcept
 inline int Checkers::_history_move_score(const Move& m) const
 {
 	return history[pos_idx(m.old_pos())][pos_idx(m.new_pos())];
+}
+
+inline bool Checkers::_history_greater(const Move& lhs, const Move& rhs) const
+{
+	return
+		history[pos_idx(lhs.old_pos())][pos_idx(lhs.new_pos())] * butterfly[pos_idx(rhs.old_pos())][pos_idx(rhs.new_pos())] >
+		history[pos_idx(rhs.old_pos())][pos_idx(rhs.new_pos())] * butterfly[pos_idx(lhs.old_pos())][pos_idx(lhs.new_pos())];
 }
 
 // Returns whether given position is valid

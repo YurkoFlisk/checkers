@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// board.h, version 1.5
+// board.h, version 1.6
 
 #pragma once
 #ifndef _BOARD_H
@@ -35,6 +35,7 @@ class Board
 	friend class MoveGenDefault;
 public:
 	static constexpr int DRAW_REPEATED_POS_COUNT = 3; // Count of repeated positions during the game for declaring draw
+	static constexpr int DRAW_CONSECUTIVE_QUEEN_MOVES = 15; // Count of consecutive queen-only moves(from both players) for declaring draw
 	// Constructor
 	Board(void) noexcept;
 	// Destructor
@@ -45,6 +46,8 @@ public:
 	inline bool get_misere(void) const noexcept;
 	inline game_state get_state(void) const noexcept;
 	inline int16_t get_current_ply(void) const noexcept;
+	inline int get_piece_count(piece_type) const noexcept;
+	inline int get_all_piece_count(void) const noexcept;
 	inline const Piece* operator[](size_t) const;
 	inline Piece get_cell(int, int) const;
 	inline Piece get_cell(const Position&) const;
@@ -63,8 +66,8 @@ public:
 protected:
 	inline game_state no_moves_state(void) const noexcept;
 	void _update_game_state(void); // Updates current game state after a player's move
-	void _proceed(void); // Performs updating board information when proceeding to a next ply
-	void _retreat(void); // Performs updating board information when retreating to a previous ply
+	void _proceed(Move&); // Performs updating board information when performing given move
+	void _retreat(Move&); // Performs updating board information when undoing given move
 	// Clear the board
 	void _clear_board(void);
 	// Initialization of Zobrist keys
@@ -80,11 +83,13 @@ protected:
 	Piece board[8][8]; // Board
 	Position piece_list[PT_COUNT][12]; // Piece list
 	int16_t cur_ply; // Current ply
+	int all_piece_count; // Overall piece count
 	int piece_count[PT_COUNT]; // Count of each piece
 	int index[8][8]; // Index of position in piece_list[{ position's piece type }] array
 	std::unique_ptr<MoveGen> move_gen;
 	uint64_t cur_hash; // Hash of current position
 	uint64_t zobrist_hash[PT_COUNT][64]; // Zobrist keys
+	std::vector<int> consecutiveQM; // Consequtive queen moves up to given ply
 	std::unordered_map<uint64_t, int> _position_count; // How many times each position occured throughout the game(for detecting draws)
 };
 
@@ -111,6 +116,18 @@ inline game_state Board::get_state(void) const noexcept
 inline int16_t Board::get_current_ply(void) const noexcept
 {
 	return cur_ply;
+}
+
+inline int Board::get_piece_count(piece_type pt) const noexcept
+{
+	if (pt < 0 || pt >= PT_COUNT)
+		return 0;
+	return piece_count[pt];
+}
+
+inline int Board::get_all_piece_count(void) const noexcept
+{
+	return all_piece_count;
 }
 
 inline game_state Board::no_moves_state(void) const noexcept
