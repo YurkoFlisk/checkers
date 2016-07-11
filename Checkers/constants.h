@@ -63,14 +63,14 @@ CONST Gdiplus::Color C_SHADOW = Gdiplus::Color(87, 77, 162, 49);
  CONSTEXPR size_t LEVELS_COUNT = 8;
  CONSTEXPR size_t HINT_DEPTH = 8;
 #else
- CONSTEXPR size_t LEVELS_COUNT = 12;
- CONSTEXPR size_t HINT_DEPTH = 12;
+ CONSTEXPR size_t LEVELS_COUNT = 16;
+ CONSTEXPR size_t HINT_DEPTH = 16;
 #endif
 CONSTEXPR size_t MAX_OFN_CHARS = 256;
 CONSTEXPR size_t LEVELS[LEVELS_COUNT] = {
 	1, 2, 3, 4, 5, 6, 7, 8
 #if !defined _DEBUG && !defined DEBUG
-	, 9, 10, 11, 12
+	, 9, 10, 11, 12, 13, 14, 15, 16
 #endif
 }; // levels in combo box in new game with cpu dialog box(as numbers)
 const char* const COLUMN_LR[8] = {
@@ -82,7 +82,7 @@ const char* const ROW_TD[8] = {
 const char* const LEVELS_STR[LEVELS_COUNT] = {
 	"1", "2", "3", "4", "5", "6", "7", "8"
 #if !defined _DEBUG && !defined DEBUG
-	, "9", "10", "11", "12"
+	, "9", "10", "11", "12", "13", "14", "15", "16"
 #endif
 }; // levels in combo box in new game with cpu dialog box(as strings)
 
