@@ -17,6 +17,7 @@
     <ClCompile Include="$(MSBuildThisFileDirectory)engine\board.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)engine\checkers.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)engine\move_gen.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)engine\tt.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\board.h" />
@@ -26,5 +27,6 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\move_gen.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\piece.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\position.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)engine\tt.h" />
   </ItemGroup>
 </Project>

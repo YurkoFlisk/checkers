@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// constants.h, version 1.4
+// constants.h, version 1.6
 
 #pragma once
 #ifndef _CONSTANTS_H
@@ -66,6 +66,7 @@ CONST Gdiplus::Color C_SHADOW = Gdiplus::Color(87, 77, 162, 49);
  CONSTEXPR size_t LEVELS_COUNT = 16;
  CONSTEXPR size_t HINT_DEPTH = 16;
 #endif
+CONSTEXPR size_t RULES_COUNT = 2;
 CONSTEXPR size_t MAX_OFN_CHARS = 256;
 CONSTEXPR size_t LEVELS[LEVELS_COUNT] = {
 	1, 2, 3, 4, 5, 6, 7, 8
@@ -73,6 +74,9 @@ CONSTEXPR size_t LEVELS[LEVELS_COUNT] = {
 	, 9, 10, 11, 12, 13, 14, 15, 16
 #endif
 }; // levels in combo box in new game with cpu dialog box(as numbers)
+CONSTEXPR game_rules RULES[RULES_COUNT] = {
+	RULES_DEFAULT, RULES_ENGLISH
+};
 const char* const COLUMN_LR[8] = {
 	"a", "b", "c", "d", "e", "f", "g", "h"
 }; // displayed columns from left to right
@@ -85,5 +89,8 @@ const char* const LEVELS_STR[LEVELS_COUNT] = {
 	, "9", "10", "11", "12", "13", "14", "15", "16"
 #endif
 }; // levels in combo box in new game with cpu dialog box(as strings)
+const char* const RULES_STR[RULES_COUNT] = {
+	"Default", "English"
+};
 
 #endif

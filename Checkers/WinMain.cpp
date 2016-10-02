@@ -171,6 +171,8 @@ void FinishGame(HWND hWnd)
 // Function for drawing
 void OnPaint(HDC hDC)
 {
+	if (computers_move)
+		return;
 	Graphics graphics(hDC);
 	graphics.SetSmoothingMode(SmoothingModeAntiAlias);
 	if (repaint_board)
@@ -197,8 +199,6 @@ void OnPaint(HDC hDC)
 			}
 		repaint_board = false;
 	}
-	if (computers_move)
-		return;
 	for (int x = BOARD_LEFT, n = 0; x < BOARD_RIGHT; x += CELL_SIZE, ++n)
 		for (int y = BOARD_TOP + CELL_SIZE*(1 - (n & 1)); y < BOARD_BOTTOM; y += 2 * CELL_SIZE)
 		{
@@ -321,6 +321,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		updateRect.left = BOARD_RIGHT, updateRect.top = BOARD_TOP - D_TURN,
 			updateRect.right = BOARD_RIGHT + D_TURN, updateRect.bottom = BOARD_TOP;
 		InvalidateRect(hWnd, &updateRect, FALSE);
+		if (repaint_board)
+			InvalidateRect(hWnd, NULL, FALSE);
 		hDC = BeginPaint(hWnd, &ps);
 		OnPaint(hDCMem);
 		BitBlt(hDC, 0, 0, MAIN_WIDTH, MAIN_HEIGHT, hDCMem, 0, 0, SRCCOPY);
@@ -432,7 +434,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			board_whitedown = !board_whitedown;
 			repaint_board = true;
 			if (!computers_move) // If computer is now thinking, then the board will be repainted during animation of it's move
-				InvalidateRect(hWnd, NULL, TRUE);
+				InvalidateRect(hWnd, NULL, FALSE);
 			break;
 		case IDM_UNDO_MOVE:
 			selected_x = selected_y = -1;
@@ -597,9 +599,10 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 // Callback function for new game with computer dialog box
 INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	static game_rules rules;
 	static bool misere;
 	static size_t idx;
-	static HWND hLevelCBWnd;
+	static HWND hLevelCBWnd, hRulesCBWnd;
 	switch (message)
 	{
 	case WM_INITDIALOG:
@@ -608,6 +611,10 @@ INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 		for (size_t i = 0; i < LEVELS_COUNT; ++i)
 			SendMessage(hLevelCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(LEVELS_STR[i]));
 		SendMessage(hLevelCBWnd, CB_SETCURSEL, LEVELS_COUNT - 1, NULL);
+		hRulesCBWnd = GetDlgItem(hDlg, IDC_RULES);
+		for (size_t i = 0; i < RULES_COUNT; ++i)
+			SendMessage(hRulesCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(RULES_STR[i]));
+		SendMessage(hRulesCBWnd, CB_SETCURSEL, 0, NULL);
 		return(INT_PTR)TRUE;
 	case WM_COMMAND:
 		switch (LOWORD(wParam))
@@ -617,16 +624,18 @@ INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			repaint_board = true;
 			pvp = IsDlgButtonChecked(hDlg, IDC_PVP);
 			misere = IsDlgButtonChecked(hDlg, IDC_MISERE);
+			idx = SendMessage(GetDlgItem(hDlg, IDC_RULES), CB_GETCURSEL, NULL, NULL);
+			rules = RULES[idx];
 			if (pvp)
 			{
 				board_whitedown = true;
-				checkers.restart(misere);
+				checkers.restart(rules, misere);
 			}
 			else
 			{
 				idx = SendMessage(GetDlgItem(hDlg, IDC_LEVEL), CB_GETCURSEL, NULL, NULL);
 				checkers.set_search_depth(LEVELS[idx]);
-				checkers.restart(misere);
+				checkers.restart(rules, misere);
 				if (IsDlgButtonChecked(hDlg, IDC_WHITE) == BST_CHECKED)
 				{
 					player_white = true;
