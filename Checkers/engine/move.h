@@ -34,6 +34,7 @@ typedef std::vector<std::pair<Position, Piece>> CaptureList;
 class Move
 {
 	friend class MoveGenDefault;
+	friend class MoveGenEnglish;
 	friend class Board;
 	friend class Checkers;
 public:

@@ -29,27 +29,18 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include <list>
 #include <stack>
 #include <algorithm>
+#include <chrono>
 #include "misc.h"
 #include "board.h"
+#include "tt.h"
 
 enum step_result : int8_t { STEP_ILLEGAL, STEP_ILLEGAL_NEW, STEP_PROCEED, STEP_FINISH };
-enum tt_bound : int8_t { TTBOUND_EXACT, TTBOUND_LOWER, TTBOUND_UPPER };
-
-struct TT_Entry
-{
-	int16_t value;
-	int8_t depth;
-	tt_bound bound_type;
-	Position best_move_from;
-	Position best_move_to;
-};
-
-typedef std::unordered_map<uint64_t, TT_Entry> TranspositionTable;
 
 class Checkers
 	: public Board
 {
 public:
+	static constexpr int TIME_CHECK_INTERVAL = 10000; // Interval(in number of calls to _pvs) between checking for timeout
 	static constexpr int16_t MAX_SCORE = 30000; // Max score(absolute value), which indicates special situations(win/loss, initial value etc)
 	static constexpr int16_t MAX_LOSE_SCORE = -MAX_SCORE + 1000; // Maximum score for loosing player
 	static constexpr int16_t MIN_WIN_SCORE = MAX_SCORE - 1000; // Minimum score for winning player
@@ -72,7 +63,7 @@ public:
 #endif
 	static const int8_t MIN_TT_SAVE_DEPTH[MAX_SEARCH_DEPTH + 1];
 	// Constructor
-	Checkers(bool = false, bool = true) noexcept;
+	Checkers(game_rules = RULES_DEFAULT, bool = false) noexcept;
 	// Destructor
 	~Checkers(void) noexcept;
 	// Public member functions
@@ -99,9 +90,11 @@ public:
 	void undo_move(void); // Undo last move
 	void redo_move(void); // Redo last undone move
 	void perform_computer_move(void); // AI. Performs computer move
-	void restart(bool = false, bool = true) noexcept override; // Restarts game(resets board and state)
-	void load_board(std::istream&);
-	void save_board(std::ostream&) const;
+	void restart(game_rules = RULES_DEFAULT, bool = false) noexcept override; // Restarts game(resets board and state)
+	void load_rules(std::istream&); // Loads the rules from given stream in text format
+	void save_rules(std::ostream&) const; // Outputs current rules to given stream in text format
+	void load_board(std::istream&); // Loads the board from given stream in text format
+	void save_board(std::ostream&) const; // Outputs current board to given stream in text format
 	void load_game(std::istream&); // Loads a game from given stream in text format
 	void save_game(std::ostream&) const; // Outputs current game to given stream in text format
 	// Returns score of the current game position(FOR WHITE AS MAXIMIZER)
@@ -139,6 +132,9 @@ protected:
 	int8_t search_depth; // Depth of minimax search
 	int16_t _score; // Internal member for get_computer_move function(for storing results of recursive calls)
 	int16_t inc_score; // Position score that is evaluated incrementally(for white as maximizer)
+	int time_check_counter; // Counter for checking time in AI
+	std::chrono::time_point<std::chrono::high_resolution_clock> start_time; // Start time of AI search
+	bool timeout; // Whether it's timeout when AI is thinking
 	std::vector<Move> undos; // Stack for information about undoing moves
 	std::stack<Move> redos; // Stack for information about redoing undone moves
 	Move _cur_move; // Internal member for step function

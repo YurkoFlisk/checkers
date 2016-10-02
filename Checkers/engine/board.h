@@ -29,19 +29,22 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include "move_gen.h"
 
 enum game_state : int8_t { GAME_CONTINUE, DRAW, WHITE_WIN, BLACK_WIN };
+enum game_rules : int8_t { RULES_DEFAULT, RULES_ENGLISH };
 
 class Board
 {
 	friend class MoveGenDefault;
+	friend class MoveGenEnglish;
 public:
 	static constexpr int DRAW_REPEATED_POS_COUNT = 3; // Count of repeated positions during the game for declaring draw
 	static constexpr int DRAW_CONSECUTIVE_QUEEN_MOVES = 15; // Count of consecutive queen-only moves(from both players) for declaring draw
 	// Constructor
-	Board(void) noexcept;
+	Board(game_rules = RULES_DEFAULT) noexcept;
 	// Destructor
 	virtual ~Board(void) noexcept;
 	// Public member functions
 	inline uint64_t get_hash(void) const noexcept;
+	inline game_rules get_rules(void) const noexcept;
 	inline bool get_white_turn(void) const noexcept;
 	inline bool get_misere(void) const noexcept;
 	inline game_state get_state(void) const noexcept;
@@ -51,7 +54,7 @@ public:
 	inline const Piece* operator[](size_t) const;
 	inline Piece get_cell(int, int) const;
 	inline Piece get_cell(const Position&) const;
-	virtual void restart(bool = false, bool = true) noexcept; // Restarts game(resets board and state)
+	virtual void restart(game_rules = RULES_DEFAULT, bool = false) noexcept; // Restarts game(resets board and state)
 	bool legal_move(Move&) const; // Returns whether given move is legal
 	template<colour, move_type = ALL>
 	inline void get_all_moves(std::vector<Move>&) const; // Outputs to given vector all possible moves
@@ -79,6 +82,7 @@ protected:
 	void _undo_move(const Move&); // Performs undoing of a move using information from move_info structure
 	bool white_turn; // Whether current turn is white's
 	bool misere; // Whether the game is misere(winner is the loser)
+	game_rules rules; // Game rules used now
 	game_state state; // Whether game is end and, if yes, who won it
 	Piece board[8][8]; // Board
 	Position piece_list[PT_COUNT][12]; // Piece list
@@ -96,6 +100,11 @@ protected:
 inline uint64_t Board::get_hash(void) const noexcept
 {
 	return cur_hash;
+}
+
+inline game_rules Board::get_rules(void) const noexcept
+{
+	return rules;
 }
 
 inline bool Board::get_white_turn(void) const noexcept

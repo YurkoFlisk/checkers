@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// position.h, version 1.5
+// position.h, version 1.6
 
 #pragma once
 #ifndef _POSITION_H
@@ -28,6 +28,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 class Position
 {
 	friend class MoveGenDefault;
+	friend class MoveGenEnglish;
 	friend class Board;
 public:
 	constexpr Position(void) noexcept

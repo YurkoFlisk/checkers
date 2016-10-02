@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// move_gen.h, version 1.5
+// move_gen.h, version 1.6
 
 #pragma once
 #include "move.h"
@@ -31,7 +31,7 @@ class MoveGen
 public:
 	MoveGen(const Board& b)
 		: board(b)
-	{};
+	{}
 	template<colour, move_type = ALL>
 	inline void get_all_moves(std::vector<Move>&) const; // Outputs to given vector all possible moves
 protected:
@@ -50,7 +50,7 @@ class MoveGenDefault
 public:
 	MoveGenDefault(const Board& b)
 		: MoveGen(b)
-	{};
+	{}
 protected:
 	virtual inline void get_all_moves_WHITE_ALL(std::vector<Move>&) const override;
 	virtual inline void get_all_moves_WHITE_CAPTURE(std::vector<Move>&) const override;
@@ -61,6 +61,31 @@ protected:
 	// Helper function for finding all capture-moves that can be done by a piece with given coordinates
 	template<colour>
 	void _find_deep_capture(std::vector<Move>&, Move&, int8_t, int8_t, bool(&)[8][8]) const;
+	// Same but for queen pieces
+	template<colour>
+	void _find_deep_capture_queen(std::vector<Move>&, Move&, int8_t, int8_t, bool(&)[8][8]) const;
+	// Main generating function
+	template<colour, move_type>
+	void _get_all_moves(std::vector<Move>&) const;
+};
+
+class MoveGenEnglish
+	: public MoveGen
+{
+public:
+	MoveGenEnglish(const Board& b)
+		: MoveGen(b)
+	{}
+protected:
+	virtual inline void get_all_moves_WHITE_ALL(std::vector<Move>&) const override;
+	virtual inline void get_all_moves_WHITE_CAPTURE(std::vector<Move>&) const override;
+	virtual inline void get_all_moves_WHITE_NON_CAPTURE(std::vector<Move>&) const override;
+	virtual inline void get_all_moves_BLACK_ALL(std::vector<Move>&) const override;
+	virtual inline void get_all_moves_BLACK_CAPTURE(std::vector<Move>&) const override;
+	virtual inline void get_all_moves_BLACK_NON_CAPTURE(std::vector<Move>&) const override;
+	// Helper function for finding all capture-moves that can be done by a piece with given coordinates
+	template<colour>
+	void _find_deep_capture(std::vector<Move>&, Move&, int8_t, int8_t) const;
 	// Same but for queen pieces
 	template<colour>
 	void _find_deep_capture_queen(std::vector<Move>&, Move&, int8_t, int8_t, bool(&)[8][8]) const;
@@ -115,6 +140,36 @@ inline void MoveGenDefault::get_all_moves_BLACK_CAPTURE(std::vector<Move>& vec) 
 }
 
 inline void MoveGenDefault::get_all_moves_BLACK_NON_CAPTURE(std::vector<Move>& vec) const
+{
+	_get_all_moves<BLACK, NON_CAPTURE>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_WHITE_ALL(std::vector<Move>& vec) const
+{
+	_get_all_moves<WHITE, ALL>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_WHITE_CAPTURE(std::vector<Move>& vec) const
+{
+	_get_all_moves<WHITE, CAPTURE>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_WHITE_NON_CAPTURE(std::vector<Move>& vec) const
+{
+	_get_all_moves<WHITE, NON_CAPTURE>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_BLACK_ALL(std::vector<Move>& vec) const
+{
+	_get_all_moves<BLACK, ALL>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_BLACK_CAPTURE(std::vector<Move>& vec) const
+{
+	_get_all_moves<BLACK, CAPTURE>(vec);
+}
+
+inline void MoveGenEnglish::get_all_moves_BLACK_NON_CAPTURE(std::vector<Move>& vec) const
 {
 	_get_all_moves<BLACK, NON_CAPTURE>(vec);
 }

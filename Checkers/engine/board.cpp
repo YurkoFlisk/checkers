@@ -26,11 +26,10 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include <random>
 #include <sstream>
 
-Board::Board(void) noexcept
+Board::Board(game_rules rule) noexcept
 {
-	move_gen = std::make_unique<MoveGenDefault>(*this);
 	init_zobrist();
-	restart();
+	restart(rule);
 }
 
 Board::~Board(void) noexcept = default;
@@ -59,7 +58,7 @@ void Board::_clear_board(void)
 			board[i][j] = Piece();
 }
 
-void Board::restart(bool mis, bool white) noexcept
+void Board::restart(game_rules rule, bool mis) noexcept
 {
 	_clear_board();
 	for (int i = 0; i < 8; i += 2)
@@ -74,13 +73,23 @@ void Board::restart(bool mis, bool white) noexcept
 		_put_piece(Position(5, i), Piece(BLACK_SIMPLE));
 		_put_piece(Position(7, i), Piece(BLACK_SIMPLE));
 	}
-	white_turn = white;
+	rules = rule;
+	white_turn = true;
 	misere = mis;
 	cur_ply = 0;
 	state = GAME_CONTINUE;
 	(decltype(_position_count)()).swap(_position_count);
 	consecutiveQM.resize(1);
 	consecutiveQM[0] = 0;
+	switch (rules)
+	{
+	case RULES_DEFAULT:
+		move_gen = std::make_unique<MoveGenDefault>(*this);
+		break;
+	case RULES_ENGLISH:
+		move_gen = std::make_unique<MoveGenEnglish>(*this);
+		break;
+	}
 }
 
 bool Board::legal_move(Move& move) const
@@ -132,7 +141,8 @@ void Board::_retreat(Move& m)
 {
 	white_turn = !white_turn;
 	--cur_ply;
-	--_position_count[get_hash()];
+	if((--_position_count[get_hash()]) == 0);
+		_position_count.erase(get_hash());
 }
 
 void Board::_put_piece(Position pos, Piece piece)
