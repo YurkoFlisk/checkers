@@ -35,6 +35,13 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include "tt.h"
 
 enum step_result : int8_t { STEP_ILLEGAL, STEP_ILLEGAL_NEW, STEP_PROCEED, STEP_FINISH };
+enum node_type : int8_t { NODE_PV, NODE_CUT, NODE_ALL };
+
+// Expected node type of child of node with given expected type in a null-window search
+constexpr inline node_type nw_child(node_type node)
+{
+	return node == NODE_CUT ? NODE_ALL : NODE_CUT;
+}
 
 class Checkers
 	: public Board
@@ -53,6 +60,10 @@ public:
 	static constexpr int16_t LT_PRUNING_MARGIN = 300; // Safety margin for LT pruning
 	static constexpr int16_t STAND_PAT_MARGIN = 300; // Safety margin for stand-pat pruning
 	static constexpr int16_t FUTILITY_MARGIN = 300; // Futility pruning margin
+	static constexpr size_t MC_MOVES_CHECK = 5; // Count of moves to check in multi-cut pruning
+	static constexpr size_t MC_MOVES_PRUNE = 3; // Count of moves to prune in multi-cut pruning
+	static constexpr int8_t MC_REDUCTION = 3; // Reduction of depth in multi-cut pruning
+	static constexpr int8_t MC_MIN_DEPTH = 5; // Minimum depth where multi-cut pruning is applied
 	static constexpr int8_t LMR_MIN_DEPTH = 3; // Minimum search depth where late move reduction can be applied
 	static constexpr int8_t ETC_MIN_DEPTH = 2; // Minimum search depth where enhanced transposition cutoff can be applied
 	static constexpr float MAX_THINKING_TIME = 5000.0f; // Maximum thinking time, ms
@@ -123,7 +134,7 @@ protected:
 	inline bool _history_greater(const Move&, const Move&) const;
 	inline void _update_possible_moves(void);
 	// Internal logic of AI(principal variation search)
-	template<colour>
+	template<colour, node_type>
 	int16_t _pvs(int8_t, int16_t, int16_t);
 	// Internal logic of AI
 	template<colour>

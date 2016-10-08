@@ -37,9 +37,9 @@ int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled
 		{  3,  4,  5,  8 },
 		{  5,  7, 10, 14 },
 		{ 13, 15, 16, 16 },
-		{ 14, 15, 20, 20 },
-		{ 17, 18, 20, 20 },
-		{ 25, 27, 29, 30 },
+		{ 16, 18, 20, 22 },
+		{ 22, 24, 26, 26 },
+		{ 28, 30, 30, 30 },
 		{ -1, -1, -1, -1 } // unused
 	},{ // BLACK_SIMPLE(filled symmetrically to WHITE_SIMPLE in init_psq function)
 	},{ // unused
@@ -358,7 +358,7 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 					bool do_full_search = false;
 					if (LMR_on && move_idx > 4)
 					{
-						_score = -_pvs<opposite(TURN)>(depth - 2, -best_score, -best_score + 1);
+						_score = -_pvs<opposite(TURN), NODE_CUT>(depth - 2, -best_score, -best_score + 1);
 						if (_score >= alpha)
 							do_full_search = true;
 					}
@@ -367,12 +367,12 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 					// Principal variation search if LMR is skipped or fails high
 					if (do_full_search && !timeout)
 						if (raised_alpha_cnt < 2)
-							_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -best_score);
+							_score = -_pvs<opposite(TURN), NODE_PV>(depth - 1, -beta, -best_score);
 						else
 						{
-							_score = -_pvs<opposite(TURN)>(depth - 1, -best_score - 1, -best_score);
+							_score = -_pvs<opposite(TURN), NODE_CUT>(depth - 1, -best_score - 1, -best_score);
 							if (beta > _score && _score > best_score && !timeout)
-								_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+								_score = -_pvs<opposite(TURN), NODE_PV>(depth - 1, -beta, -_score);
 						}
 				}
 				// Undo move
@@ -430,7 +430,7 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	return true;
 }
 
-template<colour TURN>
+template<colour TURN, node_type NODE_TYPE>
 int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 {
 	// Time control
@@ -533,9 +533,28 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 	});
 	// Whether late move reduction is on here
 	const bool LMR_on = (depth >= LMR_MIN_DEPTH && moves[0].get_captured().size() == 0),
-		PV = (beta - alpha == 1), // Whether we are in a PV-Node
 		FP_on = (depth == 1 && moves[0].get_captured().size() == 0
 			&& alpha > MAX_LOSE_SCORE); // Whether futility pruning is on here
+	// If not in PV-Node, do a multi-cut pruning
+	if (NODE_TYPE == NODE_CUT && depth >= MC_MIN_DEPTH)
+	{
+		size_t cnt_fh = 0;
+		for (++cur_ply; move_idx + MC_MOVES_PRUNE - cnt_fh <= std::min(moves.size(), MC_MOVES_CHECK); ++move_idx)
+		{
+			const Move& cur_move = moves[move_idx];
+			_do_move(cur_move);
+			_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - 1 - MC_REDUCTION, -beta, -alpha);
+			if (_score >= beta)
+				if ((++cnt_fh) == MC_MOVES_PRUNE)
+				{
+					--cur_ply;
+					_undo_move(cur_move);
+					return beta;
+				}
+			_undo_move(cur_move);
+		}
+		move_idx = 0, --cur_ply;
+	}
 	// Main search loop
 	auto best_move = moves.end();
 	bool pv_search = true;
@@ -562,7 +581,8 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 			bool do_search = false;
 			if (LMR_on && move_idx > 2)
 			{
-				_score = -_pvs<opposite(TURN)>(depth - (!PV && move_idx > 4 ? 3 : 2), -alpha, -alpha + 1);
+				_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - (!(NODE_TYPE == NODE_PV)
+					&& move_idx > 4 ? 3 : 2), -alpha, -alpha + 1);
 				if (_score >= alpha) // If reduced search returns score above alpha, do a full research
 					do_search = true;
 			}
@@ -570,13 +590,15 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				do_search = true;
 			// Principal variation search if LMR is skipped or fails high
 			if (do_search && !timeout)
-				if (pv_search)
-					_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -alpha);
+				if (NODE_TYPE != NODE_PV)
+					_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - 1, -beta, -alpha);
+				else if (pv_search)
+					_score = -_pvs<opposite(TURN), NODE_PV>(depth - 1, -beta, -alpha);
 				else
 				{
-					_score = -_pvs<opposite(TURN)>(depth - 1, -alpha - 1, -alpha);
+					_score = -_pvs<opposite(TURN), NODE_CUT>(depth - 1, -alpha - 1, -alpha);
 					if (beta > _score && _score > alpha && !timeout)
-						_score = -_pvs<opposite(TURN)>(depth - 1, -beta, -_score);
+						_score = -_pvs<opposite(TURN), NODE_PV>(depth - 1, -beta, -_score);
 				}
 		}
 		// Undo move
@@ -743,8 +765,12 @@ void Checkers::save_board(std::ostream& ostr) const
 }
 
 // Explicit template instantiations
-template int16_t	Checkers::_pvs<WHITE>(int8_t, int16_t, int16_t);
-template int16_t	Checkers::_pvs<BLACK>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<WHITE, NODE_PV>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<WHITE, NODE_CUT>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<WHITE, NODE_ALL>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<BLACK, NODE_PV>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<BLACK, NODE_CUT>(int8_t, int16_t, int16_t);
+template int16_t	Checkers::_pvs<BLACK, NODE_ALL>(int8_t, int16_t, int16_t);
 template bool		Checkers::get_computer_move<WHITE>(Move&, int&);
 template bool		Checkers::get_computer_move<BLACK>(Move&, int&);
 template int16_t	Checkers::evaluate<WHITE>(int16_t, int16_t);
