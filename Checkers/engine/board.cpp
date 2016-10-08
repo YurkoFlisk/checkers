@@ -141,7 +141,7 @@ void Board::_retreat(Move& m)
 {
 	white_turn = !white_turn;
 	--cur_ply;
-	if((--_position_count[get_hash()]) == 0);
+	if((--_position_count[get_hash()]) == 0)
 		_position_count.erase(get_hash());
 }
 
