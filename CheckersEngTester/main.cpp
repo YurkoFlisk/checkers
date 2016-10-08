@@ -77,6 +77,7 @@ int main(void)
 	SendMessage(hWndMsgWhite, CM_SETDEPTH, wDepth, NULL);
 	SendMessage(hWndMsgBlack, CM_SETDEPTH, bDepth, NULL);
 	std::ofstream log("cet_log.txt");
+	log << "DEFAULT_RULES NORMAL_GAME\n";
 	for (bool white_turn = true; ; white_turn = !white_turn)
 	{
 		auto start = chrono::high_resolution_clock::now();
