@@ -57,3 +57,15 @@
 * improved AI by wrapping PV-search into iterative deepening with aspiration windows
 * improved AI by applying stand-pat and delta pruning to quiescence search
 * improved AI evaluation by adding piece-square tables and updating score incrementally
+
+###1.6
+* some GUI bugs fixed
+* enhanced detection of draw(when players move only queens during 15 consecutive moves)
+* improved AI by adding late move reductions
+* improved AI by adding multi-cut pruning
+* improved AI by turning history heuristic into a relative history heuristic
+* improved memory efficiency by making transposition table use static memory of fixed size and properly cleaning positions counter
+* increased maximum AI search depth
+* added basic timing
+* added English rules
+* corrected and enhanced scheme of loading and saving boards and games
