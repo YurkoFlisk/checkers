@@ -2,7 +2,7 @@
 
 Current stable version - 1.6  
 
-Checkers program with simple interface written on WinAPI with GDI+. Uses Russian nad English checkers rules  
+Checkers program with simple interface written on WinAPI with GDI+. Uses Russian and English checkers rules  
 Program's features:
 - normal and misere rules
 - pvp games
