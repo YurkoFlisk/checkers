@@ -1,5 +1,6 @@
 # Checkers
 
+Working draft - 1.7
 Current stable version - 1.6  
 
 Checkers program with simple interface written on WinAPI with GDI+. Uses Russian and English checkers rules  
