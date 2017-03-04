@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// checkers.h, version 1.6
+// checkers.h, version 1.7
 
 #pragma once
 #ifndef _CHECKERS_H
@@ -60,8 +60,10 @@ public:
 	static constexpr int16_t LT_PRUNING_MARGIN = 300; // Safety margin for LT pruning
 	static constexpr int16_t STAND_PAT_MARGIN = 300; // Safety margin for stand-pat pruning
 	static constexpr int16_t FUTILITY_MARGIN = 300; // Futility pruning margin
-	static constexpr size_t MC_MOVES_CHECK = 5; // Count of moves to check in multi-cut pruning
-	static constexpr size_t MC_MOVES_PRUNE = 3; // Count of moves to prune in multi-cut pruning
+	static constexpr int16_t MS_TT_MOVE = 32000; // Move order score for move from the transposition table
+	static constexpr int16_t MS_KILLER_MOVE = 20000; // Move order score for killer move
+	static constexpr int MC_MOVES_CHECK = 5; // Count of moves to check in multi-cut pruning
+	static constexpr int MC_MOVES_PRUNE = 3; // Count of moves to prune in multi-cut pruning
 	static constexpr int8_t MC_REDUCTION = 3; // Reduction of depth in multi-cut pruning
 	static constexpr int8_t MC_MIN_DEPTH = 5; // Minimum depth where multi-cut pruning is applied
 	static constexpr int8_t LMR_MIN_DEPTH = 3; // Minimum search depth where late move reduction can be applied
@@ -119,6 +121,8 @@ protected:
 	inline void _set_cell(Position, Piece);
 	// Initialization of piece-square tables
 	void init_psq(void);
+	// Sort move list according to move order scores
+	void sort_moves(MoveList&, Position = Position(), Position = Position());
 	// Overridden Board functions
 	inline void _put_piece(Position, Piece) override;
 	inline void _remove_piece(Position) override;
@@ -129,10 +133,12 @@ protected:
 	static inline bool _legal_position(Position) noexcept;
 	static inline int16_t lose_score(int16_t) noexcept;
 	static inline int16_t win_score(int16_t) noexcept;
+	inline int16_t piece_weight(piece_type) const noexcept;
 	inline int16_t no_moves_score(int16_t) const noexcept;
 	inline int _history_move_score(const Move&) const;
 	inline bool _history_greater(const Move&, const Move&) const;
 	inline void _update_possible_moves(void);
+	inline bool _endgame(void) const noexcept;
 	// Internal logic of AI(principal variation search)
 	template<colour, node_type>
 	int16_t _pvs(int8_t, int16_t, int16_t);
@@ -168,7 +174,7 @@ inline const Move& Checkers::get_part_move(void) const noexcept
 
 inline size_t Checkers::get_part_move_size(void) const noexcept
 {
-	return _cur_move.get_path().size();
+	return _cur_move.size();
 }
 
 // Get all possible moves which begin with current inputed(by step function) part(if it's empty now, all possible moves are returned)
@@ -232,6 +238,20 @@ inline int16_t Checkers::value_to_tt(int16_t value, int16_t ply)
 		value;
 }
 
+inline int16_t Checkers::piece_weight(piece_type pt) const noexcept
+{
+	static constexpr int16_t pw[PT_COUNT] = { 0, 0, NORMAL_WEIGHT, NORMAL_WEIGHT,
+		0, 0, QUEEN_WEIGHT, QUEEN_WEIGHT };
+	static constexpr int16_t pw_eg[PT_COUNT] = { 0, 0, NORMAL_WEIGHT_ENDGAME, NORMAL_WEIGHT_ENDGAME,
+		0, 0, QUEEN_WEIGHT_ENDGAME, QUEEN_WEIGHT_ENDGAME };
+	return _endgame() ? pw[pt] : pw_eg[pt];
+}
+
+inline bool Checkers::_endgame(void) const noexcept
+{
+	return all_piece_count < 10;
+}
+
 // Score for maximizer, if it loses(parameter is current ply)
 inline int16_t Checkers::lose_score(int16_t ply) noexcept
 {
@@ -251,7 +271,8 @@ inline int16_t Checkers::no_moves_score(int16_t ply) const noexcept
 
 inline int Checkers::_history_move_score(const Move& m) const
 {
-	return history[pos_idx(m.old_pos())][pos_idx(m.new_pos())];
+	return round((float)history[pos_idx(m.old_pos())][pos_idx(m.new_pos())] /
+		butterfly[pos_idx(m.old_pos())][pos_idx(m.new_pos())]);
 }
 
 inline bool Checkers::_history_greater(const Move& lhs, const Move& rhs) const

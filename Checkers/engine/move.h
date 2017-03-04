@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,17 +19,17 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// move.h, version 1.5
+// move.h, version 1.7
 
 #pragma once
 #ifndef _MOVE_H
 #define _MOVE_H
-#include <vector>
 #include "piece.h"
 #include "position.h"
+#include "svector.h"
 
-typedef std::vector<Position> Path;
-typedef std::vector<std::pair<Position, Piece>> CaptureList;
+typedef SVector<Position, 12> Path;
+typedef SVector<std::pair<Position, Piece>, 11> CaptureList;
 
 class Move
 {
@@ -39,31 +39,16 @@ class Move
 	friend class Checkers;
 public:
 	Move(void) noexcept {}
-	Move(const Move& m) noexcept
-		: path(m.path), captured(m.captured)
-		, original(m.original), become(m.become) {}
-	Move(Move&& m) noexcept
-		: path(std::move(m.path)), captured(std::move(m.captured))
-		, original(m.original), become(m.become) {}
-	Move(const Path& p) noexcept
-		: path(p) {}
-	Move(Path&& p) noexcept
-		: path(std::move(p)) {}
-	~Move(void) noexcept {};
+	Move(Position p) noexcept : path(1, p) {};
+	Move(const Move& m) noexcept : original(m.original), become(m.become),
+		path(m.path), captured(m.captured) {}
+	~Move(void) noexcept {}
 	inline Move& operator=(const Move& m)
 	{
-		path = m.path;
+		original = m.original;
+		become = m.become;
 		captured = m.captured;
-		original = m.original;
-		become = m.become;
-		return *this;
-	}
-	inline Move& operator=(Move&& m)
-	{
-		path = std::move(m.path);
-		captured = std::move(m.captured);
-		original = m.original;
-		become = m.become;
+		path = m.path;
 		return *this;
 	}
 	inline bool operator==(const Move& rhs) const noexcept
@@ -74,13 +59,17 @@ public:
 	{
 		return path != rhs.path;
 	}
-	inline const Position& operator[](size_t idx) const
+	inline const Position& operator[](int idx) const
 	{
 		return path[idx];
 	}
-	inline size_t size(void) const noexcept
+	inline int size(void) const noexcept
 	{
 		return path.size();
+	}
+	inline int capt_size(void) const noexcept
+	{
+		return captured.size();
 	}
 	inline const Path& get_path(void) const noexcept
 	{
@@ -88,7 +77,7 @@ public:
 	}
 	inline const Position& old_pos(void) const
 	{
-		return path[0];
+		return path.front();
 	}
 	inline const Position& new_pos(void) const
 	{
@@ -96,18 +85,22 @@ public:
 	}
 	inline void add_step(const Position& pos)
 	{
-		path.push_back(pos);
+		path.add(pos);
 	}
 	inline void pop_step(void)
 	{
-		path.pop_back();
+		path.pop();
 	}
 	inline void swap(Move& rhs)
 	{
-		std::swap(path, rhs.path);
-		std::swap(captured, rhs.captured);
 		std::swap(original, rhs.original);
 		std::swap(become, rhs.become);
+		::swap(path, rhs.path);
+		::swap(captured, rhs.captured);
+	}
+	inline std::pair<Position, Piece> get_last_captured(void) const
+	{
+		return captured.back();
 	}
 	// Should not be used until move information for current path is set (It's set by legal_move
 	// function in Checkers class. For moves returned from Checkers object it's set automatically)
@@ -144,11 +137,11 @@ private:
 	}
 	inline void add_capture(const std::pair<Position, Piece>& cap)
 	{
-		captured.push_back(cap);
+		captured.add(cap);
 	}
 	inline void pop_capture(void)
 	{
-		captured.pop_back();
+		captured.pop();
 	}
 	Piece original;
 	Piece become;

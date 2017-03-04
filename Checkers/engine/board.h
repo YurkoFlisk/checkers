@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,11 +19,12 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// board.h, version 1.6
+// board.h, version 1.7
 
 #pragma once
 #ifndef _BOARD_H
 #define _BOARD_H
+#include <vector>
 #include <unordered_map>
 #include <memory>
 #include "move_gen.h"
@@ -56,11 +57,14 @@ public:
 	inline Piece get_cell(const Position&) const;
 	virtual void restart(game_rules = RULES_DEFAULT, bool = false) noexcept; // Restarts game(resets board and state)
 	bool legal_move(Move&) const; // Returns whether given move is legal
-	template<colour, move_type = ALL>
+	template<colour = EMPTY, move_type = ALL>
 	inline void get_all_moves(std::vector<Move>&) const; // Outputs to given vector all possible moves
+	template<colour TURN, move_type = ALL>
+	inline std::enable_if_t<!(TURN == EMPTY || TURN == SHADOW),
+		void> get_all_moves(MoveList&) const; // Outputs to given move list all possible moves
 	template<colour TURN = EMPTY, move_type = ALL>
 	inline std::enable_if_t<TURN == EMPTY || TURN == SHADOW,
-		void> get_all_moves(std::vector<Move>&) const;
+		void> get_all_moves(MoveList&) const; // Outputs to given move list all possible moves
 	// Stream IO functions
 	static bool read_pos(std::istream&, Position&); // Reads position from given stream
 	static void write_pos(std::ostream&, Position); // Outputs move to given stream
@@ -145,19 +149,30 @@ inline game_state Board::no_moves_state(void) const noexcept
 }
 
 template<colour TURN, move_type MT>
-inline void Board::get_all_moves(std::vector<Move>& vec) const
+inline std::enable_if_t<!(TURN == EMPTY || TURN == SHADOW),
+	void> Board::get_all_moves(MoveList& moves) const
 {
-	move_gen->get_all_moves<TURN, MT>(vec);
+	move_gen->get_all_moves<TURN, MT>(moves);
 }
 
 template<colour TURN, move_type MT>
 inline std::enable_if_t<TURN == EMPTY || TURN == SHADOW,
-	void> Board::get_all_moves(std::vector<Move>& vec) const
+	void> Board::get_all_moves(MoveList& moves) const
 {
 	if (white_turn)
-		get_all_moves<WHITE, MT>(vec);
+		get_all_moves<WHITE, MT>(moves);
 	else
-		get_all_moves<BLACK, MT>(vec);
+		get_all_moves<BLACK, MT>(moves);
+}
+
+template<colour TURN, move_type MT>
+inline void Board::get_all_moves(std::vector<Move>& moves) const
+{
+	moves.clear();
+	MoveList moveList;
+	get_all_moves<TURN, MT>(moveList);
+	for (int i = 0; i < moveList.size(); ++i)
+		moves.push_back(moveList[i].move);
 }
 
 inline const Piece* Board::operator[](size_t idx) const

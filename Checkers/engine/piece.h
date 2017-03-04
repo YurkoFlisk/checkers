@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,11 +19,12 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// piece.h, version 1.5
+// piece.h, version 1.7
 
 #pragma once
 #ifndef _PIECE_H
 #define _PIECE_H
+#include <cstdint>
 
 enum colour : int8_t { EMPTY = 0, SHADOW, WHITE, BLACK };
 enum piece_type : int8_t { PT_EMPTY = 0, PT_SHADOW, WHITE_SIMPLE, BLACK_SIMPLE, WHITE_QUEEN = 6, BLACK_QUEEN };
@@ -59,8 +60,7 @@ constexpr inline bool is_queen(piece_type pt) noexcept
 class Piece
 {
 public:
-	constexpr Piece(void) noexcept
-		: type(PT_EMPTY) {}
+	Piece(void) noexcept {}
 	constexpr Piece(const Piece& p) noexcept
 		: type(p.type) {}
 	constexpr Piece(colour c, bool q = false) noexcept

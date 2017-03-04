@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// board.cpp, version 1.6
+// board.cpp, version 1.7
 
 #include "board.h"
 #include "misc.h"
@@ -55,7 +55,7 @@ void Board::_clear_board(void)
 		piece_count[i] = 0;
 	for (int i = 0; i < 8; ++i)
 		for (int j = 0; j < 8; ++j)
-			board[i][j] = Piece();
+			board[i][j] = Piece(PT_EMPTY);
 }
 
 void Board::restart(game_rules rule, bool mis) noexcept
@@ -162,7 +162,7 @@ void Board::_remove_piece(Position pos)
 	std::swap(piece_list[cur.get_type()][index[pos.get_row()][pos.get_column()]],
 		piece_list[cur.get_type()][piece_count[cur.get_type()]]);
 	index[last_pos.get_row()][last_pos.get_column()] = index[pos.get_row()][pos.get_column()];
-	board[pos.get_row()][pos.get_column()] = Piece();
+	board[pos.get_row()][pos.get_column()] = Piece(PT_EMPTY);
 	--all_piece_count;
 }
 
@@ -170,7 +170,7 @@ void Board::_do_move(const Move& move)
 {
 	_remove_piece(move.old_pos());
 	_put_piece(move.new_pos(), move.get_become());
-	for (size_t i = 0; i < move.get_captured().size(); ++i)
+	for (size_t i = 0; i < move.capt_size(); ++i)
 		_remove_piece(move.get_captured()[i].first);
 }
 
@@ -178,7 +178,7 @@ void Board::_undo_move(const Move& undo)
 {
 	_remove_piece(undo.new_pos());
 	_put_piece(undo.old_pos(), undo.get_original());
-	for (size_t i = 0; i < undo.get_captured().size(); ++i)
+	for (size_t i = 0; i < undo.capt_size(); ++i)
 		_put_piece(undo.get_captured()[i].first, undo.get_captured()[i].second);
 }
 
@@ -231,9 +231,9 @@ bool Board::read_move(std::istream& istr, Move& move)
 
 void Board::write_move(std::ostream& ostr, const Move& move)
 {
-	if (move.get_path().empty())
+	if (move.size() == 0)
 		return;
-	const char delim = (move.get_captured().empty() ? '-' : ':');
+	const char delim = (move.capt_size() == 0 ? '-' : ':');
 	write_pos(ostr, move[0]);
 	for (size_t i = 1; i < move.size(); ++i)
 	{

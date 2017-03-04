@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// checkers.cpp, version 1.6
+// checkers.cpp, version 1.7
 
 #include "checkers.h"
 
@@ -99,7 +99,7 @@ void Checkers::restart(game_rules rule, bool mis) noexcept
 		killer.clear();
 	for (int i = 0; i < 64; ++i)
 		for (int j = 0; j < 64; ++j)
-			history[i][j] = butterfly[i][j] = 0;
+			butterfly[i][j] = (history[i][j] = 0) + 1;
 }
 
 inline void Checkers::_put_piece(Position pos, Piece piece)
@@ -140,7 +140,7 @@ step_result Checkers::step(const Position& pos)
 			prev_row = _cur_move[_cur_move.size() - 2].get_row(), prev_col = _cur_move[_cur_move.size() - 2].get_column();
 		const int d_col = (cur_col - prev_col < 0 ? -1 : 1), d_row = (cur_row - prev_row < 0 ? -1 : 1);
 		_set_cell(cur_row, cur_col, board[prev_row][prev_col]);
-		_set_cell(prev_row, prev_col, Piece());
+		_set_cell(prev_row, prev_col, Piece(PT_EMPTY));
 		if (!board[cur_row][cur_col].is_queen() && cur_row == (get_white_turn() ? 7 : 0))
 			_set_cell(cur_row, cur_col, get_white_turn() ? Piece(WHITE_QUEEN) : Piece(BLACK_QUEEN));
 		for (int row = prev_row, col = prev_col; row != cur_row; row += d_row, col += d_col)
@@ -174,7 +174,7 @@ void Checkers::part_undo(void)
 {
 	if (_cur_move.size() > 0)
 	{
-		_set_cell(_cur_move.new_pos(), Piece());
+		_set_cell(_cur_move.new_pos(), Piece(PT_EMPTY));
 		_set_cell(_cur_move.old_pos(), _cur_move.get_original());
 		for (const auto& destroyed : _cur_move.get_captured())
 			_set_cell(destroyed.first, destroyed.second);
@@ -240,10 +240,56 @@ void Checkers::perform_computer_move(void)
 	_update_possible_moves();
 }
 
+void Checkers::sort_moves(MoveList& moves, Position ttmove_from, Position ttmove_to)
+{
+	// Assign scores to moves
+	if (moves[0].move.capt_size() == 0) // If non-capture moves
+		for (int i = 0; i < moves.size(); ++i)
+		{
+			const auto& cur_move = moves[i].move;
+			// TT move
+			if (cur_move.old_pos() == ttmove_from && cur_move.new_pos() == ttmove_to)
+			{
+				moves[i].score = MS_TT_MOVE;
+				continue;
+			}
+			// Killer moves
+			moves[i].score = 0;
+			for (const auto& killer : killers[cur_ply])
+				if (killer == cur_move)
+				{
+					moves[i].score = MS_KILLER_MOVE;
+					break;
+				}
+			// Relative history heuristic
+			if (moves[i].score == 0)
+				moves[i].score = _history_move_score(cur_move);
+		}
+	else // If capture-moves
+		for (int i = 0; i < moves.size(); ++i)
+		{
+			const auto& cur_move = moves[i].move;
+			// TT move
+			if (cur_move.old_pos() == ttmove_from && cur_move.new_pos() == ttmove_to)
+			{
+				moves[i].score = MS_TT_MOVE;
+				continue;
+			}
+			// MVV-LVA
+			moves[i].score = -(piece_weight(cur_move.get_original().get_type()) << 1)
+				+ piece_weight(cur_move.get_become().get_type()); // - (current piece weight) + (promotion bonus)
+			for (const auto& capt : cur_move.get_captured())
+				moves[i].score += piece_weight(capt.second.get_type());
+		}
+	// Sort moves
+	std::sort(moves.begin(), moves.end(), [](const MLNode& ml1,
+		const MLNode& ml2) { return ml1.score > ml2.score; });
+}
+
 inline int16_t Checkers::score(void) const noexcept
 {
 	int16_t sc(inc_score);
-	if (all_piece_count < 10)
+	if (_endgame())
 	{
 		sc += NORMAL_WEIGHT_ENDGAME*(piece_count[WHITE_SIMPLE] - piece_count[BLACK_SIMPLE]);
 		sc += QUEEN_WEIGHT_ENDGAME*(piece_count[WHITE_QUEEN] - piece_count[BLACK_QUEEN]);
@@ -272,7 +318,7 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 	else if (stand_pat + DELTA_PRUNING_MARGIN < alpha)
 		return stand_pat;
 	// Get all capture moves
-	std::vector<Move> moves;
+	MoveList moves;
 	get_all_moves<TURN, CAPTURE>(moves);
 	// If no capture moves, check whether there are non-capture moves
 	if (moves.empty())
@@ -280,16 +326,18 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 		get_all_moves<TURN, NON_CAPTURE>(moves);
 		return moves.empty() ? lose_score(cur_ply) : stand_pat;
 	}
+	// Sort moves by their score
+	sort_moves(moves);
 	// Quiescent search
 	++cur_ply;
-	for (const auto& move : moves)
+	for (int move_idx = 0; move_idx < moves.size(); ++move_idx)
 	{
 		// Do move
-		_do_move(move);
+		_do_move(moves[move_idx].move);
 		// Search
 		_score = -evaluate<opposite(TURN)>(-beta, -alpha);
 		// Undo move
-		_undo_move(move);
+		_undo_move(moves[move_idx].move);
 		// Update alpha
 		if (_score > alpha)
 			alpha = _score;
@@ -308,7 +356,7 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	if (get_state() != GAME_CONTINUE)
 		return false;
 	// Get all moves for current position
-	std::vector<Move> moves;
+	MoveList moves;
 	get_all_moves<TURN>(moves);
 	// If no moves, return immediately
 	if (moves.empty())
@@ -320,10 +368,8 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	// Make sure killers vector size is sufficient
 	if ((++cur_ply) + MAX_SEARCH_DEPTH > killers.size())
 		killers.resize(cur_ply + MAX_SEARCH_DEPTH);
-	// Relative history heuristic
-	std::sort(moves.begin(), moves.end(), [this](const Move& lhs, const Move& rhs) {
-		return _history_greater(lhs, rhs);
-	});
+	// Sort moves by their scores
+	sort_moves(moves);
 	// Configuring start time
 	start_time = std::chrono::high_resolution_clock::now();
 	// Main iterative deepening loop
@@ -334,9 +380,9 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 		int16_t delta = 21, best_score;
 		int16_t alpha = std::max(out_score - delta, -MAX_SCORE),
 			beta = std::min(out_score + delta, +MAX_SCORE);
-		auto best_move = moves.end();
+		int best_move;
 		// Whether late move reduction is on here
-		const bool LMR_on = (depth > LMR_MIN_DEPTH && moves[0].get_captured().size() == 0);
+		const bool LMR_on = (depth > LMR_MIN_DEPTH && moves[0].move.get_captured().size() == 0);
 		// Search until the score will be strictly inside an aspiration window (alpha; beta)
 		while (true)
 		{
@@ -345,9 +391,10 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 			// Main search loop
 			for (; move_idx < moves.size(); ++move_idx)
 			{
-				auto it = moves.begin() + move_idx;
+				// auto it = moves.begin() + move_idx;
+				const auto& cur_move = moves[move_idx].move;
 				// Do move
-				_do_move(*it);
+				_do_move(cur_move);
 				// Check for threefold repetition draw
 				if (++_position_count[get_hash()] == DRAW_REPEATED_POS_COUNT)
 					_score = 0;
@@ -378,13 +425,13 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 				// Undo move
 				if ((--_position_count[get_hash()]) == 0)
 					_position_count.erase(get_hash());
-				_undo_move(*it);
+				_undo_move(cur_move);
 				// Time control
 				if (timeout)
 					break;
 				// Update best_score
 				if (_score > best_score)
-					best_score = _score, best_move = it, ++raised_alpha_cnt;
+					best_score = _score, best_move = move_idx, ++raised_alpha_cnt;
 				// Beta-cutoff
 				if (best_score >= beta)
 					break;
@@ -413,17 +460,12 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 		// do not change previous iteration's out score and move
 		if (timeout)
 			break;
-		// Update moves list
-		// In next iteration current best move will be examined first
-		swap(*best_move, moves.front());
-		// Relative history heuristic
-		std::sort(moves.begin() + 1, moves.end(), [this](const Move& lhs, const Move& rhs) {
-			return _history_greater(lhs, rhs);
-		});
+		// Update move order by new scores
+		sort_moves(moves, moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
 		// Set out score
 		out_score = best_score;
 	}
-	--cur_ply, out = moves.front();
+	--cur_ply, out = moves[0].move;
 	// Add this position evaluation to transposition table
 	_transtable[TURN - WHITE].store(get_hash(), value_to_tt(out_score, cur_ply),
 		search_depth, TTBOUND_EXACT, out.old_pos(), out.new_pos());
@@ -455,8 +497,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		return alpha;
 	// Define some variables
 	int16_t old_alpha = alpha, best_score = lose_score(cur_ply);
-	std::vector<Move> moves;
-	size_t killers_last, move_idx = 0;
+	int move_idx = 0;
 	auto tt_it = _transtable[TURN - WHITE].find(get_hash());
 	// Use transposition table
 	if (tt_it != nullptr)
@@ -483,65 +524,47 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		}
 		if (alpha >= beta)
 			return alpha;
-		killers_last = 1;
-		// Get all moves for current position
-		get_all_moves<TURN>(moves);
-		for (auto& cur_move : moves)
-			if (cur_move.old_pos() == tt_it->best_move_from
-				&& cur_move.new_pos() == tt_it->best_move_to)
-			{
-				swap(moves.front(), cur_move);
-				break;
-			}
 	}
-	else
-	{
-		killers_last = 0;
-		// Get all moves for current position
-		get_all_moves<TURN>(moves);
-		if (moves.empty())
-			return no_moves_score(cur_ply);
-	}
+	// Get all moves for current position
+	MoveList moves;
+	get_all_moves<TURN>(moves);
+	// Return appropriate score if there are no any
+	if (moves.empty())
+		return no_moves_score(cur_ply);
 	// Enhanced transposition cutoff
 	if (depth >= ETC_MIN_DEPTH)
 	{
-		++cur_ply;
-		for (const auto& move : moves)
+		for (++cur_ply, move_idx = 0; move_idx < moves.size(); ++move_idx)
 		{
-			_do_move(move);
+			_do_move(moves[move_idx].move);
 			auto etc_it = _transtable[opposite(TURN) - WHITE].find(get_hash());
 			if (etc_it != nullptr && etc_it->depth >= depth - 1
 				&& etc_it->bound_type != TTBOUND_LOWER)
 				alpha = std::max<int16_t>(alpha, -value_from_tt(*etc_it, cur_ply));
-			_undo_move(move);
+			_undo_move(moves[move_idx].move);
 		}
 		--cur_ply;
 		if (alpha >= beta)
 			return alpha;
 	}
-	// Killer heuristic
-	for (const auto& killer : killers[cur_ply])
-		for (size_t i = killers_last; i < moves.size(); ++i)
-			if (moves[i] == killer)
-			{
-				swap(moves[i], moves[killers_last++]);
-				break;
-			}
-	// Relative history heuristic
-	std::sort(moves.begin() + killers_last, moves.end(), [this](const Move& lhs, const Move& rhs) {
-		return _history_greater(lhs, rhs);
-	});
+	// Whether position is quiet(legal moves from here are non-captures)
+	const bool quiet = (moves[0].move.get_captured().size() == 0);
 	// Whether late move reduction is on here
-	const bool LMR_on = (depth >= LMR_MIN_DEPTH && moves[0].get_captured().size() == 0),
-		FP_on = (depth == 1 && moves[0].get_captured().size() == 0
-			&& alpha > MAX_LOSE_SCORE); // Whether futility pruning is on here
+	const bool LMR_on = (depth >= LMR_MIN_DEPTH && quiet),
+		FP_on = (depth == 1 && quiet && alpha > MAX_LOSE_SCORE); // Whether futility pruning is on here
+	// Sort moves by their score
+	if (tt_it == nullptr)
+		sort_moves(moves);
+	else
+		sort_moves(moves, tt_it->best_move_from, tt_it->best_move_to);
 	// If not in PV-Node, do a multi-cut pruning
 	if (NODE_TYPE == NODE_CUT && depth >= MC_MIN_DEPTH)
 	{
 		size_t cnt_fh = 0;
-		for (++cur_ply; move_idx + MC_MOVES_PRUNE - cnt_fh <= std::min(moves.size(), MC_MOVES_CHECK); ++move_idx)
+		for (++cur_ply, move_idx = 0; move_idx + MC_MOVES_PRUNE - cnt_fh
+			<= std::min(moves.size(), MC_MOVES_CHECK); ++move_idx)
 		{
-			const Move& cur_move = moves[move_idx];
+			const Move& cur_move = moves[move_idx].move;
 			_do_move(cur_move);
 			_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - 1 - MC_REDUCTION, -beta, -alpha);
 			if (_score >= beta)
@@ -553,14 +576,14 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				}
 			_undo_move(cur_move);
 		}
-		move_idx = 0, --cur_ply;
+		--cur_ply;
 	}
 	// Main search loop
-	auto best_move = moves.end();
+	int best_move = 0;
 	bool pv_search = true;
-	for (++cur_ply; move_idx < moves.size(); ++move_idx)
+	for (++cur_ply, move_idx = 0; move_idx < moves.size(); ++move_idx)
 	{
-		const Move& cur_move = moves[move_idx];
+		const Move& cur_move = moves[move_idx].move;
 		// Do move
 		_do_move(cur_move);
 		// Check for threefold repetition draw
@@ -611,7 +634,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		// Update best score and alpha
 		if (_score > best_score)
 		{
-			best_score = _score, best_move = moves.begin() + move_idx;
+			best_score = _score, best_move = move_idx;
 			if (_score > alpha)
 				alpha = _score, pv_search = false; // pv_search = false here?
 		}
@@ -622,13 +645,27 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 			history[pos_idx(cur_move.old_pos())][pos_idx(cur_move.new_pos())] += depth * depth; // OR depth ??
 			// Update butterfly counters for all previous moves
 			for (int i = 0; i < move_idx; ++i)
-				butterfly[pos_idx(moves[i].old_pos())][pos_idx(moves[i].new_pos())] += depth;
+				butterfly[pos_idx(moves[i].move.old_pos())][pos_idx(moves[i].move.new_pos())] += depth;
 			// Update killer heuristic
-			if (move_idx >= killers_last) // If current move is not in killers
+			if (quiet) // If position is quiet
 			{
-				killers[cur_ply].push_front(cur_move);
-				if (killers[cur_ply].size() > MAX_KILLERS)
-					killers[cur_ply].pop_back();
+				--cur_ply; // Because cur_ply is increased now
+				// Check whether this potential killer is a new one
+				bool killer_new = true;
+				for(const auto& killer : killers[cur_ply])
+					if (killer == cur_move)
+					{
+						killer_new = false;
+						break;
+					}
+				// If it's new, add it to killers
+				if (killer_new)
+				{
+					killers[cur_ply].push_front(cur_move);
+					if (killers[cur_ply].size() > MAX_KILLERS)
+						killers[cur_ply].pop_back();
+				}
+				++cur_ply; // Because cur_ply will be decreased after the end of move cycle
 			}
 			// Cutoff
 			break;
@@ -639,7 +676,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 	if (depth >= MIN_TT_SAVE_DEPTH[search_depth])
 		_transtable[TURN - WHITE].store(get_hash(), value_to_tt(best_score, cur_ply), depth,
 			best_score <= old_alpha ? TTBOUND_UPPER : (alpha < beta ? TTBOUND_EXACT : TTBOUND_LOWER),
-			best_move->old_pos(), best_move->new_pos());
+			moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
 	return best_score; // !!!!! NOT ALPHA !!!!!
 }
 

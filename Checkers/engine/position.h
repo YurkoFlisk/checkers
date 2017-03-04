@@ -1,6 +1,6 @@
 /*
 ========================================================================
-Copyright (c) 2016 Yurko Prokopets(aka YurkoFlisk)
+Copyright (c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
 
 This file is part of Checkers source code
 
@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// position.h, version 1.6
+// position.h, version 1.7
 
 #pragma once
 #ifndef _POSITION_H
@@ -31,8 +31,7 @@ class Position
 	friend class MoveGenEnglish;
 	friend class Board;
 public:
-	constexpr Position(void) noexcept
-		: row(0), column(0) {}
+	Position(void) noexcept {}
 	constexpr Position(const Position& p) noexcept
 		: row(p.row), column(p.column) {}
 	constexpr Position(int8_t r, int8_t c) noexcept
