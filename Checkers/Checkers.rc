@@ -77,15 +77,15 @@ END
 // Dialog
 //
 
-IDD_ABOUTBOX DIALOGEX 0, 0, 173, 63
+IDD_ABOUTBOX DIALOGEX 0, 0, 173, 68
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About Checkers"
 FONT 8, "MS Shell Dlg", 0, 0, 0x1
 BEGIN
-    ICON            IDR_MAINFRAME,IDC_STATIC,14,14,20,20
-    CTEXT           "Checkers, version 1.6",IDC_STATIC,42,14,114,8,SS_NOPREFIX
-    CTEXT           "Copyright Yurko Prokopets(C) 2016\nLicensed under GNU GPL v3",IDC_STATIC,39,22,120,17
-    DEFPUSHBUTTON   "Œ ",IDOK,116,42,50,14,WS_GROUP
+    ICON            IDR_MAINFRAME,IDC_STATIC,14,14,21,20
+    CTEXT           "Checkers, version 1.7",IDC_STATIC,42,14,114,8,SS_NOPREFIX
+    CTEXT           "Copyright Yurko Prokopets(C)\n2016-2017\nLicensed under GNU GPL v3",IDC_STATIC,39,22,120,24
+    DEFPUSHBUTTON   "Œ ",IDOK,116,47,50,14,WS_GROUP
 END
 
 
@@ -102,7 +102,7 @@ BEGIN
         LEFTMARGIN, 6
         RIGHTMARGIN, 166
         TOPMARGIN, 7
-        BOTTOMMARGIN, 56
+        BOTTOMMARGIN, 61
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -198,8 +198,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,6,0,0
- PRODUCTVERSION 1,6,0,0
+ FILEVERSION 1,7,0,0
+ PRODUCTVERSION 1,7,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -216,12 +216,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "YurkoFlisk"
             VALUE "FileDescription", "Checkers executable file"
-            VALUE "FileVersion", "1.6.0.0"
+            VALUE "FileVersion", "1.7.0.0"
             VALUE "InternalName", "Checkers.exe"
-            VALUE "LegalCopyright", "YurkoFlisk Copyright (C) 2016"
+            VALUE "LegalCopyright", "YurkoFlisk Copyright (C) 2016-2017"
             VALUE "OriginalFilename", "Checkers.exe"
             VALUE "ProductName", "Checkers"
-            VALUE "ProductVersion", "1.6.0.0"
+            VALUE "ProductVersion", "1.7.0.0"
         END
     END
     BLOCK "VarFileInfo"
