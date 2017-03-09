@@ -364,9 +364,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 			cur_move_used_pos.push_back(Position(selected_y, selected_x));
 			InvalidatePos(hWnd, cur_move_used_pos.back());
-			if (!checkers.get_part_move().get_captured().empty())
+			if (!(checkers.get_part_move().capt_size() == 0))
 			{
-				cur_move_used_pos.push_back(checkers.get_part_move().get_captured().back().first);
+				cur_move_used_pos.push_back(checkers.get_part_move().get_last_captured().first);
 				InvalidatePos(hWnd, cur_move_used_pos.back());
 			}
 			else if (pm_result == STEP_ILLEGAL_NEW)
@@ -402,7 +402,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			{
 				InvalidatePos(hWnd, cpuMove[i - 1]);
 				InvalidatePos(hWnd, cpuMove[i]);
-				if (!cpuMove.get_captured().empty())
+				if (cpuMove.capt_size())
 					InvalidatePos(hWnd, cpuMove.get_captured()[i - 1].first);
 				UpdateWindow(hWnd);
 				if (i != cpuMove.size() - 1)

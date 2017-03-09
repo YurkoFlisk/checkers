@@ -25,6 +25,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\misc.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\move.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\move_gen.h" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)engine\svector.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\piece.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\position.h" />
     <ClInclude Include="$(MSBuildThisFileDirectory)engine\tt.h" />
