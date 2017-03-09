@@ -1,7 +1,7 @@
 // Checkers benchmarker
 // Launches computer vs computer game and writes it's log to ai_log.txt
-// Copyright(c) 2016 Yurko Prokopets(aka YurkoFlisk)
-// main.cpp, version 1.5
+// Copyright(c) 2016-2017 Yurko Prokopets(aka YurkoFlisk)
+// main.cpp, version 1.7
 
 #include "engine/checkers.h"
 #include <iostream>
@@ -10,11 +10,11 @@
 
 using namespace std;
 constexpr const char* AI_LOG_FILE = "ai_log.txt";
+Checkers white_ai, black_ai;
 
 int main(void)
 {
-	Checkers white_ai, black_ai;
-	int white_level, black_level, timer, overall_time(0);
+	int white_level, black_level, timer, overall_time(0), game_length(0);
 	Move move;
 	cout << "Enter white level: ";
 	cin >> white_level;
@@ -25,6 +25,7 @@ int main(void)
 	std::ofstream ai_log(AI_LOG_FILE);
 	for (bool white_turn = true; ; white_turn = !white_turn)
 	{
+		++game_length;
 		auto start_time = std::chrono::high_resolution_clock::now();
 		(white_turn ? white_ai : black_ai).get_computer_move(move);
 		auto end_time = std::chrono::high_resolution_clock::now();
@@ -45,6 +46,7 @@ int main(void)
 		}
 	}
 	ai_log << "Overall time elapsed: " << overall_time << "ms\n";
+	ai_log << "Average thinking time: " << (float)(overall_time) / game_length << "ms\n";
 	ai_log.close();
 	return 0;
 }
