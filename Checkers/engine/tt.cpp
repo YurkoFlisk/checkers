@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// tt.cpp, version 1.6
+// tt.cpp, version 1.7
 
 #include "tt.h"
 
@@ -41,33 +41,33 @@ const TT_Entry* TT_Bucket::find(uint64_t key) const
 	return nullptr;
 }
 
-void TT_Bucket::store(uint64_t k, int16_t val, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
+void TT_Bucket::store(uint64_t k, int16_t val, int16_t ag, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
 {
 	if (size < MAX_ENTRY_COUNT)
 	{
 		for (int i = 0; i < size; ++i)
 			if (entries[i].key == k)
 			{
-				if (entries[i].depth <= d)
-					entries[i].store(k, val, d, bt, bm_from, bm_to);
+				if (entries[i].depth < d || (entries[i].depth == d && bt == TTBOUND_EXACT))
+					entries[i].store(k, val, ag, d, bt, bm_from, bm_to);
 				return;
 			}
-		entries[size++].store(k, val, d, bt, bm_from, bm_to);
+		entries[size++].store(k, val, ag, d, bt, bm_from, bm_to);
 	}
 	else
 	{
 		TT_Entry* replace = entries;
 		for (int i = 0; i < MAX_ENTRY_COUNT; ++i)
 			if (entries[i].key == k)
-				if (entries[i].depth <= d)
+				if (entries[i].depth < d || (entries[i].depth == d && bt == TTBOUND_EXACT))
 				{
 					replace = entries + i;
 					break;
 				}
 				else
 					return;
-			else if (entries[i].depth < replace->depth)
+			else if (entries[i].age < replace->age)
 				replace = entries + i;
-		replace->store(k, val, d, bt, bm_from, bm_to);
+		replace->store(k, val, ag, d, bt, bm_from, bm_to);
 	}
 }

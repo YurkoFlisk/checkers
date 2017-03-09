@@ -19,7 +19,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 ========================================================================
 */
 
-// tt.h, version 1.6
+// tt.h, version 1.7
 
 #pragma once
 #include "move.h"
@@ -32,13 +32,14 @@ constexpr int TT_INDEX_MASK = TT_SIZE - 1;
 struct TT_Entry
 {
 	int16_t value;
+	int16_t age;
 	int8_t depth;
 	tt_bound bound_type;
 	Position best_move_from;
 	Position best_move_to;
 	uint64_t key;
 	// Stores an info to entry
-	inline void store(uint64_t, int16_t, int8_t, tt_bound, Position, Position);
+	inline void store(uint64_t, int16_t, int16_t, int8_t, tt_bound, Position, Position);
 };
 
 class TT_Bucket
@@ -52,7 +53,7 @@ public:
 	// Finds entry corresponding to given key. If there is no such entry, returns nullptr
 	const TT_Entry* find(uint64_t) const;
 	// Stores an entry with given key
-	void store(uint64_t, int16_t, int8_t, tt_bound, Position, Position);
+	void store(uint64_t, int16_t, int16_t, int8_t, tt_bound, Position, Position);
 	// Cleares the bucket
 	inline void clear(void);
 private:
@@ -70,16 +71,16 @@ public:
 	// Finds entry corresponding to given key. If there is no such entry, returns nullptr
 	inline const TT_Entry* find(uint64_t) const;
 	// Stores an entry with given key
-	inline void store(uint64_t, int16_t, int8_t, tt_bound, Position, Position);
+	inline void store(uint64_t, int16_t, int16_t, int8_t, tt_bound, Position, Position);
 	// Cleares the table
 	inline void clear(void);
 protected:
 	TT_Bucket table[TT_SIZE];
 };
 
-inline void TT_Entry::store(uint64_t k, int16_t val, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
+inline void TT_Entry::store(uint64_t k, int16_t val, int16_t ag, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
 {
-	key = k, value = val, depth = d, bound_type = bt, best_move_from = bm_from, best_move_to = bm_to;
+	key = k, value = val, age = ag, depth = d, bound_type = bt, best_move_from = bm_from, best_move_to = bm_to;
 }
 
 inline void TT_Bucket::clear(void)
@@ -92,9 +93,9 @@ inline const TT_Entry* TranspositionTable::find(uint64_t key) const
 	return table[key & TT_INDEX_MASK].find(key);
 }
 
-inline void TranspositionTable::store(uint64_t k, int16_t val, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
+inline void TranspositionTable::store(uint64_t k, int16_t val, int16_t ag, int8_t d, tt_bound bt, Position bm_from, Position bm_to)
 {
-	table[k & TT_INDEX_MASK].store(k, val, d, bt, bm_from, bm_to);
+	table[k & TT_INDEX_MASK].store(k, val, ag, d, bt, bm_from, bm_to);
 }
 
 inline void TranspositionTable::clear(void)

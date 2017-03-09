@@ -32,8 +32,13 @@ enum move_type : int8_t { ALL, CAPTURE, NON_CAPTURE };
 struct MLNode
 {
 	Move move;
-	int16_t score;
+	int score;
 };
+
+inline bool operator>(const MLNode& ml1, const MLNode& ml2)
+{
+	return ml1.score > ml2.score;
+}
 
 typedef SVector<MLNode, MAX_MOVES_COUNT> MoveList;
 

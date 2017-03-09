@@ -53,15 +53,17 @@ public:
 	static constexpr int16_t MIN_WIN_SCORE = MAX_SCORE - 1000; // Minimum score for winning player
 	static constexpr int MAX_KILLERS = 3; // Maximum numbers of killers for killer heuristic(AI)
 	static constexpr int16_t NORMAL_WEIGHT = 100; // Weight of non-queen piece in score function
-	static constexpr int16_t QUEEN_WEIGHT = 300; // Weight of queen piece in score function
-	static constexpr int16_t NORMAL_WEIGHT_ENDGAME = 140; // Weight of non-queen piece in score function in endgame
-	static constexpr int16_t QUEEN_WEIGHT_ENDGAME = 315; // Weight of queen piece in score function in endgame
-	static constexpr int16_t DELTA_PRUNING_MARGIN = 500; // Safety margin for delta pruning in quiscence search
+	static constexpr int16_t QUEEN_WEIGHT = 280; // Weight of queen piece in score function
+	static constexpr int16_t NORMAL_WEIGHT_ENDGAME = 105; // Weight of non-queen piece in score function in endgame
+	static constexpr int16_t QUEEN_WEIGHT_ENDGAME = 325; // Weight of queen piece in score function in endgame
+	static constexpr int16_t RELMAT_MULT = 110; // Multiplier for relative material advantage
+	static constexpr int16_t DELTA_PRUNING_MARGIN = 300; // Safety margin for delta pruning in quiscence search
 	static constexpr int16_t LT_PRUNING_MARGIN = 300; // Safety margin for LT pruning
 	static constexpr int16_t STAND_PAT_MARGIN = 300; // Safety margin for stand-pat pruning
 	static constexpr int16_t FUTILITY_MARGIN = 300; // Futility pruning margin
-	static constexpr int16_t MS_TT_MOVE = 32000; // Move order score for move from the transposition table
-	static constexpr int16_t MS_KILLER_MOVE = 20000; // Move order score for killer move
+	static constexpr int MS_TT_MOVE = 1000000000; // Move order score for move from the transposition table
+	static constexpr int MS_KILLER_MOVE = 1000000; // Move order score for killer move
+	static constexpr int MS_COUNTERMOVE_BONUS = 1000; // Move order bonus for countermoves
 	static constexpr int MC_MOVES_CHECK = 5; // Count of moves to check in multi-cut pruning
 	static constexpr int MC_MOVES_PRUNE = 3; // Count of moves to prune in multi-cut pruning
 	static constexpr int8_t MC_REDUCTION = 3; // Reduction of depth in multi-cut pruning
@@ -72,7 +74,7 @@ public:
 #if defined _DEBUG || defined DEBUG
 	static constexpr int8_t MAX_SEARCH_DEPTH = 8; // Maximum search depth of AI
 #else
-	static constexpr int8_t MAX_SEARCH_DEPTH = 16; // Maximum search depth of AI
+	static constexpr int8_t MAX_SEARCH_DEPTH = 20; // Maximum search depth of AI
 #endif
 	static const int8_t MIN_TT_SAVE_DEPTH[MAX_SEARCH_DEPTH + 1];
 	// Constructor
@@ -122,7 +124,9 @@ protected:
 	// Initialization of piece-square tables
 	void init_psq(void);
 	// Sort move list according to move order scores
-	void sort_moves(MoveList&, Position = Position(), Position = Position());
+	void score_moves(MoveList&, Position = Position(), Position = Position());
+	// Update killer moves for given ply with given move
+	void update_killers(int16_t, const Move&);
 	// Overridden Board functions
 	inline void _put_piece(Position, Piece) override;
 	inline void _remove_piece(Position) override;
@@ -133,8 +137,9 @@ protected:
 	static inline bool _legal_position(Position) noexcept;
 	static inline int16_t lose_score(int16_t) noexcept;
 	static inline int16_t win_score(int16_t) noexcept;
-	inline int16_t piece_weight(piece_type) const noexcept;
 	inline int16_t no_moves_score(int16_t) const noexcept;
+	inline int piece_weight(piece_type) const noexcept;
+	inline int captured_weight(const Move&) const;
 	inline int _history_move_score(const Move&) const;
 	inline bool _history_greater(const Move&, const Move&) const;
 	inline void _update_possible_moves(void);
@@ -148,6 +153,7 @@ protected:
 	// Members
 	int8_t search_depth; // Depth of minimax search
 	int16_t _score; // Internal member for get_computer_move function(for storing results of recursive calls)
+	int16_t root_ply; // Game ply of the root of current search
 	int16_t inc_score; // Position score that is evaluated incrementally(for white as maximizer)
 	int time_check_counter; // Counter for checking time in AI
 	std::chrono::time_point<std::chrono::high_resolution_clock> start_time; // Start time of AI search
@@ -158,6 +164,7 @@ protected:
 	std::vector<Move> _cur_possible_moves; // Internal member for step function
 	TranspositionTable _transtable[2]; // Scores for some of already computed positions where 0 is white's turn and 1 is black's
 	std::vector<std::list<Move> > killers; // Killers for killer heuristic in AI(indexed by ply)
+	Move countermove[64][64]; // Countermove table for countermove heuristic
 	int history[64][64]; // History table for relative history heuristic in AI
 	int butterfly[64][64]; // Butterfly table for relative history heuristic in AI
 };
@@ -238,11 +245,11 @@ inline int16_t Checkers::value_to_tt(int16_t value, int16_t ply)
 		value;
 }
 
-inline int16_t Checkers::piece_weight(piece_type pt) const noexcept
+inline int Checkers::piece_weight(piece_type pt) const noexcept
 {
-	static constexpr int16_t pw[PT_COUNT] = { 0, 0, NORMAL_WEIGHT, NORMAL_WEIGHT,
+	static constexpr int pw[PT_COUNT] = { 0, 0, NORMAL_WEIGHT, NORMAL_WEIGHT,
 		0, 0, QUEEN_WEIGHT, QUEEN_WEIGHT };
-	static constexpr int16_t pw_eg[PT_COUNT] = { 0, 0, NORMAL_WEIGHT_ENDGAME, NORMAL_WEIGHT_ENDGAME,
+	static constexpr int pw_eg[PT_COUNT] = { 0, 0, NORMAL_WEIGHT_ENDGAME, NORMAL_WEIGHT_ENDGAME,
 		0, 0, QUEEN_WEIGHT_ENDGAME, QUEEN_WEIGHT_ENDGAME };
 	return _endgame() ? pw[pt] : pw_eg[pt];
 }
@@ -271,7 +278,7 @@ inline int16_t Checkers::no_moves_score(int16_t ply) const noexcept
 
 inline int Checkers::_history_move_score(const Move& m) const
 {
-	return round((float)history[pos_idx(m.old_pos())][pos_idx(m.new_pos())] /
+	return round((float)(history[pos_idx(m.old_pos())][pos_idx(m.new_pos())]) /
 		butterfly[pos_idx(m.old_pos())][pos_idx(m.new_pos())]);
 }
 
@@ -280,6 +287,14 @@ inline bool Checkers::_history_greater(const Move& lhs, const Move& rhs) const
 	return
 		history[pos_idx(lhs.old_pos())][pos_idx(lhs.new_pos())] * butterfly[pos_idx(rhs.old_pos())][pos_idx(rhs.new_pos())] >
 		history[pos_idx(rhs.old_pos())][pos_idx(rhs.new_pos())] * butterfly[pos_idx(lhs.old_pos())][pos_idx(lhs.new_pos())];
+}
+
+inline int Checkers::captured_weight(const Move& move) const
+{
+	int ret(0);
+	for (const auto& capt : move.get_captured())
+		ret += piece_weight(capt.second.get_type());
+	return ret;
 }
 
 // Returns whether given position is valid

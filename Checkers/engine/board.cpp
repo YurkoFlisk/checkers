@@ -127,7 +127,6 @@ void Board::_update_game_state(void)
 void Board::_proceed(Move& m)
 {
 	white_turn = !white_turn;
-	++cur_ply;
 	++_position_count[get_hash()];
 	if (consecutiveQM.size() <= cur_ply)
 		consecutiveQM.resize(cur_ply + 1);
@@ -140,7 +139,6 @@ void Board::_proceed(Move& m)
 void Board::_retreat(Move& m)
 {
 	white_turn = !white_turn;
-	--cur_ply;
 	if((--_position_count[get_hash()]) == 0)
 		_position_count.erase(get_hash());
 }
@@ -168,18 +166,22 @@ void Board::_remove_piece(Position pos)
 
 void Board::_do_move(const Move& move)
 {
+	++cur_ply;
 	_remove_piece(move.old_pos());
 	_put_piece(move.new_pos(), move.get_become());
 	for (size_t i = 0; i < move.capt_size(); ++i)
 		_remove_piece(move.get_captured()[i].first);
+	prev_move_se.emplace(move.old_pos(), move.new_pos());
 }
 
 void Board::_undo_move(const Move& undo)
 {
+	--cur_ply;
 	_remove_piece(undo.new_pos());
 	_put_piece(undo.old_pos(), undo.get_original());
 	for (size_t i = 0; i < undo.capt_size(); ++i)
 		_put_piece(undo.get_captured()[i].first, undo.get_captured()[i].second);
+	prev_move_se.pop();
 }
 
 bool Board::read_pos(std::istream& istr, Position& pos)

@@ -28,6 +28,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 template<colour TURN, move_type MT>
 void MoveGenDefault::_get_all_moves(MoveList& moves) const
 {
+	static bool capture[8][8] = {};
 	// Search for capture-moves first
 	if (MT != NON_CAPTURE)
 	{
@@ -36,7 +37,6 @@ void MoveGenDefault::_get_all_moves(MoveList& moves) const
 			const auto& pos = board.piece_list[turn_simple(TURN)][i];
 			Move move(pos);
 			move.set_original(board[pos.row][pos.column]);
-			bool capture[8][8] = {};
 			tmp_assign<Piece> move_begin(const_cast<Piece&>
 				(board[pos.row][pos.column]), Piece(PT_EMPTY)); // Because this position is empty when we move from it
 			_find_deep_capture<TURN>(moves, move, pos.row, pos.column, capture);
@@ -46,7 +46,6 @@ void MoveGenDefault::_get_all_moves(MoveList& moves) const
 			const auto& pos = board.piece_list[turn_queen(TURN)][i];
 			Move move(pos);
 			move.set_original(board[pos.row][pos.column]);
-			bool capture[8][8] = {};
 			tmp_assign<Piece> move_begin(const_cast<Piece&>
 				(board[pos.row][pos.column]), Piece(PT_EMPTY)); // Because this position is empty when we move from it
 			_find_deep_capture_queen<TURN>(moves, move, pos.row, pos.column, capture);
@@ -192,6 +191,7 @@ void MoveGenDefault::_find_deep_capture_queen(MoveList& moves, Move& move, int8_
 template<colour TURN, move_type MT>
 void MoveGenEnglish::_get_all_moves(MoveList& moves) const
 {
+	static bool capture[8][8] = {};
 	// Search for capture-moves first
 	if (MT != NON_CAPTURE)
 	{
@@ -207,7 +207,6 @@ void MoveGenEnglish::_get_all_moves(MoveList& moves) const
 			const auto& pos = board.piece_list[turn_queen(TURN)][i];
 			Move move(pos);
 			move.set_original(board[pos.row][pos.column]);
-			bool capture[8][8] = {};
 			tmp_assign<Piece> move_begin(const_cast<Piece&>
 				(board[pos.row][pos.column]), Piece(PT_EMPTY)); // Because this position is empty when we move from it
 			_find_deep_capture_queen<TURN>(moves, move, pos.row, pos.column, capture);
