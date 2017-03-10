@@ -602,19 +602,23 @@ INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 	static game_rules rules;
 	static bool misere;
 	static size_t idx;
-	static HWND hLevelCBWnd, hRulesCBWnd;
+	static HWND hCBWnd;
 	switch (message)
 	{
 	case WM_INITDIALOG:
 		CheckRadioButton(hDlg, IDC_WHITE, IDC_BLACK, IDC_WHITE);
-		hLevelCBWnd = GetDlgItem(hDlg, IDC_LEVEL);
-		for (size_t i = 0; i < LEVELS_COUNT; ++i)
-			SendMessage(hLevelCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(LEVELS_STR[i]));
-		SendMessage(hLevelCBWnd, CB_SETCURSEL, LEVELS_COUNT - 1, NULL);
-		hRulesCBWnd = GetDlgItem(hDlg, IDC_RULES);
+		hCBWnd = GetDlgItem(hDlg, IDC_LEVEL);
+		for (size_t i = 0; i < LEVELS_COUNT + 1; ++i)
+			SendMessage(hCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(LEVELS_STR[i]));
+		SendMessage(hCBWnd, CB_SETCURSEL, DEFAULT_LEVEL_IDX, NULL);
+		hCBWnd = GetDlgItem(hDlg, IDC_RULES);
 		for (size_t i = 0; i < RULES_COUNT; ++i)
-			SendMessage(hRulesCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(RULES_STR[i]));
-		SendMessage(hRulesCBWnd, CB_SETCURSEL, 0, NULL);
+			SendMessage(hCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(RULES_STR[i]));
+		SendMessage(hCBWnd, CB_SETCURSEL, DEFAULT_RULES_IDX, NULL);
+		hCBWnd = GetDlgItem(hDlg, IDC_TIMELIMIT);
+		for (size_t i = 0; i < TIMELIMITS_COUNT; ++i)
+			SendMessage(hCBWnd, CB_ADDSTRING, NULL, reinterpret_cast<LPARAM>(TIMELIMITS_STR[i]));
+		SendMessage(hCBWnd, CB_SETCURSEL, DEFAULT_TIMELIMIT_IDX, NULL);
 		return(INT_PTR)TRUE;
 	case WM_COMMAND:
 		switch (LOWORD(wParam))
@@ -634,7 +638,12 @@ INT_PTR CALLBACK DlgNewGame(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			else
 			{
 				idx = SendMessage(GetDlgItem(hDlg, IDC_LEVEL), CB_GETCURSEL, NULL, NULL);
-				checkers.set_search_depth(LEVELS[idx]);
+				if (idx == LEVELS_COUNT)
+					checkers.set_search_depth(Checkers::UNBOUNDED_DEPTH);
+				else
+					checkers.set_search_depth(LEVELS[idx]);
+				idx = SendMessage(GetDlgItem(hDlg, IDC_TIMELIMIT), CB_GETCURSEL, NULL, NULL);
+				checkers.set_time_limit(TIMELIMITS[idx]);
 				checkers.restart(rules, misere);
 				if (IsDlgButtonChecked(hDlg, IDC_WHITE) == BST_CHECKED)
 				{

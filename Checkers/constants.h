@@ -66,8 +66,15 @@ CONST Gdiplus::Color C_SHADOW = Gdiplus::Color(87, 77, 162, 49);
  CONSTEXPR size_t LEVELS_COUNT = 20;
  CONSTEXPR size_t HINT_DEPTH = 16;
 #endif
+CONSTEXPR size_t TIMELIMITS_COUNT = 5;
 CONSTEXPR size_t RULES_COUNT = 2;
+CONSTEXPR size_t DEFAULT_LEVEL_IDX = LEVELS_COUNT - 1;
+CONSTEXPR size_t DEFAULT_RULES_IDX = 0;
+CONSTEXPR size_t DEFAULT_TIMELIMIT_IDX = 3;
 CONSTEXPR size_t MAX_OFN_CHARS = 256;
+CONSTEXPR float TIMELIMITS[TIMELIMITS_COUNT] = {
+	100, 1000, 2500, 5000, 10000
+};
 CONSTEXPR size_t LEVELS[LEVELS_COUNT] = {
 	1, 2, 3, 4, 5, 6, 7, 8
 #if !defined _DEBUG && !defined DEBUG
@@ -83,11 +90,15 @@ const char* const COLUMN_LR[8] = {
 const char* const ROW_TD[8] = {
 	"8", "7", "6", "5", "4", "3", "2", "1"
 }; // displayed rows from top to down
-const char* const LEVELS_STR[LEVELS_COUNT] = {
+const char* const TIMELIMITS_STR[TIMELIMITS_COUNT] = {
+	"100", "1000", "2500", "5000", "10000"
+};
+const char* const LEVELS_STR[LEVELS_COUNT + 1] = {
 	"1", "2", "3", "4", "5", "6", "7", "8"
 #if !defined _DEBUG && !defined DEBUG
 	, "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"
 #endif
+	, "Unbounded"
 }; // levels in combo box in new game with cpu dialog box(as strings)
 const char* const RULES_STR[RULES_COUNT] = {
 	"Default", "English"
