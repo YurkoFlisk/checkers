@@ -59,14 +59,14 @@ void TT_Bucket::store(uint64_t k, int16_t val, int16_t ag, int8_t d, tt_bound bt
 		TT_Entry* replace = entries;
 		for (int i = 0; i < MAX_ENTRY_COUNT; ++i)
 			if (entries[i].key == k)
+			{
 				if (entries[i].depth < d || (entries[i].depth == d && bt == TTBOUND_EXACT))
-				{
-					replace = entries + i;
-					break;
-				}
-				else
-					return;
-			else if (entries[i].age < replace->age)
+					entries[i].store(k, val, ag, d, bt, bm_from, bm_to);
+				return;
+			}
+			else if (entries[i].age < replace->age || (entries[i].age == replace->age
+				&& (entries[i].depth < replace->depth || (entries[i].depth == replace->depth
+					&& replace->bound_type == TTBOUND_EXACT))))
 				replace = entries + i;
 		replace->store(k, val, ag, d, bt, bm_from, bm_to);
 	}

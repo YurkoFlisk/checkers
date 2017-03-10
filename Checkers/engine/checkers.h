@@ -70,19 +70,20 @@ public:
 	static constexpr int8_t MC_MIN_DEPTH = 5; // Minimum depth where multi-cut pruning is applied
 	static constexpr int8_t LMR_MIN_DEPTH = 3; // Minimum search depth where late move reduction can be applied
 	static constexpr int8_t ETC_MIN_DEPTH = 2; // Minimum search depth where enhanced transposition cutoff can be applied
-	static constexpr float MAX_THINKING_TIME = 5000.0f; // Maximum thinking time, ms
+	static constexpr float DEFAULT_TIME_LIMIT = 5000.0f; // Maximum thinking time, ms
+	static constexpr int8_t UNBOUNDED_DEPTH = -1; // search_depth value indicating absence of search depth bound
 #if defined _DEBUG || defined DEBUG
 	static constexpr int8_t MAX_SEARCH_DEPTH = 8; // Maximum search depth of AI
 #else
-	static constexpr int8_t MAX_SEARCH_DEPTH = 20; // Maximum search depth of AI
+	static constexpr int8_t MAX_SEARCH_DEPTH = 120; // Maximum search depth of AI
 #endif
-	static const int8_t MIN_TT_SAVE_DEPTH[MAX_SEARCH_DEPTH + 1];
 	// Constructor
 	Checkers(game_rules = RULES_DEFAULT, bool = false) noexcept;
 	// Destructor
 	~Checkers(void) noexcept;
 	// Public member functions
 	inline int8_t get_search_depth(void) const noexcept;
+	inline float get_time_limit(void) const noexcept;
 	inline const Move& get_part_move(void) const noexcept;
 	inline size_t get_part_move_size(void) const noexcept;
 	inline const std::vector<Move>& get_part_possible_moves(void) const;
@@ -90,6 +91,7 @@ public:
 	inline colour current_turn_colour(void) const noexcept;
 	inline const Piece* operator[](size_t) const;
 	inline void set_search_depth(int8_t) noexcept;
+	inline void set_time_limit(float) noexcept;
 	bool move(Move&); // Function for inputing player's move
 	// Function for inputing player's move step-by-step. Returns
 	// STEP_ILLEGAL and discards information about move if the move is illegal,
@@ -98,9 +100,9 @@ public:
 	// STEP_FINISH if given step is valid and the whole move is finished
 	step_result step(const Position&);
 	// AI. Outputs computer's move to a first parameter and position score to a second.
-	// Returns false if computer doesn't have move(lost) and true otherwise. Uses minimax algorithm with alpha-beta pruning
-	inline bool get_computer_move(Move&, int&);
-	inline bool get_computer_move(Move&);
+	// Returns search depth of the last iterative deepening iteration. Uses minimax algorithm with alpha-beta pruning
+	inline int8_t get_computer_move(Move&, int&);
+	inline int8_t get_computer_move(Move&);
 	void part_undo(void); // Undoing of current unfinished part move(inputted with step function)
 	void undo_move(void); // Undo last move
 	void redo_move(void); // Redo last undone move
@@ -149,9 +151,10 @@ protected:
 	int16_t _pvs(int8_t, int16_t, int16_t);
 	// Internal logic of AI
 	template<colour>
-	bool get_computer_move(Move&, int&);
+	int8_t get_computer_move(Move&, int&);
 	// Members
-	int8_t search_depth; // Depth of minimax search
+	float time_limit; // Time limit of search
+	int8_t search_depth; // Depth of search
 	int16_t _score; // Internal member for get_computer_move function(for storing results of recursive calls)
 	int16_t root_ply; // Game ply of the root of current search
 	int16_t inc_score; // Position score that is evaluated incrementally(for white as maximizer)
@@ -172,6 +175,11 @@ protected:
 inline int8_t Checkers::get_search_depth(void) const noexcept
 {
 	return search_depth;
+}
+
+inline float Checkers::get_time_limit(void) const noexcept
+{
+	return time_limit;
 }
 
 inline const Move& Checkers::get_part_move(void) const noexcept
@@ -208,8 +216,15 @@ inline const Piece* Checkers::operator[](size_t idx) const
 // Set search depth. Should be [1; MAX_SEARCH_DEPTH]
 inline void Checkers::set_search_depth(int8_t depth) noexcept
 {
-	if ((search_depth = std::max<int8_t>(depth, 1)) > MAX_SEARCH_DEPTH)
-		search_depth = MAX_SEARCH_DEPTH;
+	if (depth == UNBOUNDED_DEPTH)
+		search_depth = depth;
+	else
+		search_depth = std::max<int8_t>(depth, 1);
+}
+
+inline void Checkers::set_time_limit(float limit) noexcept
+{
+	time_limit = limit;
 }
 
 // Updates currently possible moves
@@ -304,7 +319,7 @@ inline bool Checkers::_legal_position(Position pos) noexcept
 		(pos.get_row() & 1) == (pos.get_column() & 1);
 }
 
-inline bool Checkers::get_computer_move(Move& m, int& sc)
+inline int8_t Checkers::get_computer_move(Move& m, int& sc)
 {
 	if (white_turn)
 		return get_computer_move<WHITE>(m, sc);
@@ -312,7 +327,7 @@ inline bool Checkers::get_computer_move(Move& m, int& sc)
 		return get_computer_move<BLACK>(m, sc);
 }
 
-inline bool Checkers::get_computer_move(Move& out)
+inline int8_t Checkers::get_computer_move(Move& out)
 {
 	int tmp;
 	return get_computer_move(out, tmp);

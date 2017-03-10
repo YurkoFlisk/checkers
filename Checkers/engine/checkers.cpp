@@ -24,12 +24,6 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include "checkers.h"
 #include <functional>
 
-const int8_t Checkers::MIN_TT_SAVE_DEPTH[Checkers::MAX_SEARCH_DEPTH + 1] = {
-	0, 0, 0, 0, 0, 0, 0, 0, 0
-#ifndef _DEBUG
-	, 0, 0, 0, 0, 1, 2, 3, 4, 4, 4, 4, 4
-#endif
-};
 int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled symmetrically in init_psq function
 	{ // PT_EMPTY
 	},{ // PT_SHADOW
@@ -59,7 +53,7 @@ int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled
 };
 
 Checkers::Checkers(game_rules rules, bool mis) noexcept
-	: search_depth(MAX_SEARCH_DEPTH)
+	: search_depth(MAX_SEARCH_DEPTH), time_limit(DEFAULT_TIME_LIMIT)
 {
 	init_psq();
 	restart(rules, mis);
@@ -376,11 +370,11 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 }
 
 template<colour TURN>
-bool Checkers::get_computer_move(Move& out, int& out_score)
+int8_t Checkers::get_computer_move(Move& out, int& out_score)
 {
 	// Return if the game is not active
 	if (get_state() != GAME_CONTINUE)
-		return false;
+		return 0;
 	// Get all moves for current position
 	MoveList moves;
 	get_all_moves<TURN>(moves);
@@ -389,7 +383,7 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	{
 		state = no_moves_state();
 		out_score = no_moves_score(cur_ply);
-		return false;
+		return 0;
 	}
 	// Set the root ply
 	root_ply = cur_ply;
@@ -404,8 +398,10 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 	// Configuring start time
 	start_time = std::chrono::high_resolution_clock::now();
 	// Main iterative deepening loop
+	int8_t out_depth = 0;
 	timeout = false, time_check_counter = 0, out_score = 0;
-	for (int depth = 1; depth <= search_depth; ++depth)
+	for (int depth = 1; depth <= (search_depth == UNBOUNDED_DEPTH ?
+		MAX_SEARCH_DEPTH : search_depth); ++depth)
 	{
 		// Principal variation search with aspiration windows
 		int16_t delta = 21, best_score;
@@ -502,14 +498,15 @@ bool Checkers::get_computer_move(Move& out, int& out_score)
 		// Update move order by new scores and reorder moves in the move list
 		score_moves(moves, moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
 		std::sort(moves.begin(), moves.end(), std::greater<MLNode>());
-		// Set out score
+		// Set out score and depth
 		out_score = best_score;
+		out_depth = depth;
 	}
 	out = moves[0].move;
 	// Add this position evaluation to transposition table
 	_transtable[TURN - WHITE].store(get_hash(), value_to_tt(out_score, cur_ply), root_ply,
-		search_depth, TTBOUND_EXACT, out.old_pos(), out.new_pos());
-	return true;
+		out_depth, TTBOUND_EXACT, out.old_pos(), out.new_pos());
+	return out_depth;
 }
 
 template<colour TURN, node_type NODE_TYPE>
@@ -521,7 +518,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		time_check_counter = 0;
 		auto cur_time = std::chrono::high_resolution_clock::now();
 		if (std::chrono::duration_cast<
-			std::chrono::milliseconds>(cur_time - start_time).count() > MAX_THINKING_TIME)
+			std::chrono::milliseconds>(cur_time - start_time).count() > time_limit)
 		{
 			timeout = true;
 			return 0;
@@ -714,7 +711,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		}
 	}
 	// Add this position evaluation to transposition table if appropriate
-	if (!(NODE_TYPE == NODE_CUT && best_score == old_alpha) && depth >= MIN_TT_SAVE_DEPTH[search_depth])
+	if (!(NODE_TYPE == NODE_CUT && best_score == old_alpha))
 		_transtable[TURN - WHITE].store(get_hash(), value_to_tt(best_score, cur_ply), root_ply, depth,
 			best_score <= old_alpha ? TTBOUND_UPPER : (alpha < beta ? TTBOUND_EXACT : TTBOUND_LOWER),
 			moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
@@ -849,7 +846,7 @@ template int16_t	Checkers::_pvs<WHITE, NODE_ALL>(int8_t, int16_t, int16_t);
 template int16_t	Checkers::_pvs<BLACK, NODE_PV>(int8_t, int16_t, int16_t);
 template int16_t	Checkers::_pvs<BLACK, NODE_CUT>(int8_t, int16_t, int16_t);
 template int16_t	Checkers::_pvs<BLACK, NODE_ALL>(int8_t, int16_t, int16_t);
-template bool		Checkers::get_computer_move<WHITE>(Move&, int&);
-template bool		Checkers::get_computer_move<BLACK>(Move&, int&);
+template int8_t		Checkers::get_computer_move<WHITE>(Move&, int&);
+template int8_t		Checkers::get_computer_move<BLACK>(Move&, int&);
 template int16_t	Checkers::evaluate<WHITE>(int16_t, int16_t);
 template int16_t	Checkers::evaluate<BLACK>(int16_t, int16_t);
