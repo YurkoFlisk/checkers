@@ -12,7 +12,7 @@ Program's features:
 - saving and loading positions
 - saving and loading games in standard checkers notation
 
-For launching, use Checkers.exe if you have Visual C++ Redistributable 2015 installed, or Checkers_static.exe if you don't (first variant is preferable)
+For launching, use Checkers.exe if you have Visual C++ Redistributable 2017 installed, or Checkers_static.exe if you don't (first variant is preferable)
 
 # License
 
