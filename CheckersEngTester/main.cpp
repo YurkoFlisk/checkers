@@ -1,8 +1,8 @@
 // Checkers tester
 // Launches engine vs engine game for automatical testing
 // different versions of engine against each other
-// Copyright(c) 2016 Yurko Prokopets(aka YurkoFlisk)
-// main.cpp, version 1.6
+// Copyright (c) 2016-2017 Yurko Prokopets (aka YurkoFlisk)
+// main.cpp, version 1.7
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -11,9 +11,12 @@
 #include <chrono>
 #include <fstream>
 #include "../Checkers/engine/board.h"
+
+// User messages
 #define CM_MOVE WM_USER
 #define CM_CPUMOVE WM_USER + 1
 #define CM_SETDEPTH WM_USER + 2
+#define CM_SETTIMELIMIT WM_USER + 3
 
 using namespace std;
 
@@ -21,6 +24,7 @@ DWORD whitePID, blackPID, pID;
 HWND hWndFound = NULL, hWndMsgWhite = NULL, hWndMsgBlack = NULL;
 HANDLE hWhite, hBlack;
 
+// Proper resource deallocation in case of console termination
 BOOL CloseHandler(DWORD dwCtrlType)
 {
 	if (dwCtrlType == CTRL_CLOSE_EVENT)
@@ -69,19 +73,25 @@ int main(void)
 		TerminateProcess(hBlack, 0);
 		return 0;
 	}
-	int wDepth, bDepth, timer;
+	int wDepth, bDepth, wTL, bTL, timer, searchedDepth;
 	cout << "Enter white depth: ";
 	cin >> wDepth;
 	cout << "Enter black depth: ";
 	cin >> bDepth;
+	cout << "Enter white time limit (ms): ";
+	cin >> wTL;
+	cout << "Enter black time limit (ms): ";
+	cin >> bTL;
 	SendMessage(hWndMsgWhite, CM_SETDEPTH, wDepth, NULL);
 	SendMessage(hWndMsgBlack, CM_SETDEPTH, bDepth, NULL);
+	SendMessage(hWndMsgWhite, CM_SETTIMELIMIT, wTL, NULL);
+	SendMessage(hWndMsgBlack, CM_SETTIMELIMIT, bTL, NULL);
 	std::ofstream log("cet_log.txt");
 	log << "DEFAULT_RULES NORMAL_GAME\n";
 	for (bool white_turn = true; ; white_turn = !white_turn)
 	{
 		auto start = chrono::high_resolution_clock::now();
-		SendMessage(white_turn ? hWndMsgWhite : hWndMsgBlack, CM_CPUMOVE, NULL, NULL);
+		searchedDepth = SendMessage(white_turn ? hWndMsgWhite : hWndMsgBlack, CM_CPUMOVE, NULL, NULL);
 		auto end = chrono::high_resolution_clock::now();
 		timer = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 		std::ifstream in("text.txt");
@@ -90,7 +100,7 @@ int main(void)
 		gs = (game_state)(SendMessage(white_turn ? hWndMsgBlack : hWndMsgWhite, CM_MOVE, NULL, NULL));
 		cout << (white_turn ? "White move: " : "Black move: ");
 		Board::write_move(cout, move);
-		cout << ' ' << timer << "ms elapsed\n";
+		cout << ' ' << timer << "ms elapsed. Searched to depth " << searchedDepth << ".\n";
 		Board::write_move(log, move);
 		log << '\n';
 		if (gs != GAME_CONTINUE)
