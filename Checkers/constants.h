@@ -60,7 +60,7 @@ CONST Gdiplus::Color C_BLUE = Gdiplus::Color(20, 20, 255);
 CONST Gdiplus::Color C_YELLOW = Gdiplus::Color(216, 216, 20);
 CONST Gdiplus::Color C_SHADOW = Gdiplus::Color(87, 77, 162, 49);
 #if defined _DEBUG || defined DEBUG
- CONSTEXPR size_t LEVELS_COUNT = 8;
+ CONSTEXPR size_t LEVELS_COUNT = 16;
  CONSTEXPR size_t HINT_DEPTH = 8;
 #else
  CONSTEXPR size_t LEVELS_COUNT = 20;
@@ -76,9 +76,9 @@ CONSTEXPR float TIMELIMITS[TIMELIMITS_COUNT] = {
 	100, 1000, 2500, 5000, 10000
 };
 CONSTEXPR size_t LEVELS[LEVELS_COUNT] = {
-	1, 2, 3, 4, 5, 6, 7, 8
+	1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 #if !defined _DEBUG && !defined DEBUG
-	, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+	, 17, 18, 19, 20
 #endif
 }; // levels in combo box in new game with cpu dialog box(as numbers)
 CONSTEXPR game_rules RULES[RULES_COUNT] = {
@@ -94,9 +94,10 @@ const char* const TIMELIMITS_STR[TIMELIMITS_COUNT] = {
 	"100", "1000", "2500", "5000", "10000"
 };
 const char* const LEVELS_STR[LEVELS_COUNT + 1] = {
-	"1", "2", "3", "4", "5", "6", "7", "8"
+	"1", "2", "3", "4", "5", "6", "7", "8",
+	"9", "10", "11", "12", "13", "14", "15", "16"
 #if !defined _DEBUG && !defined DEBUG
-	, "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"
+	, "17", "18", "19", "20"
 #endif
 	, "Unbounded"
 }; // levels in combo box in new game with cpu dialog box(as strings)
