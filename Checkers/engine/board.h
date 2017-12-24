@@ -98,7 +98,7 @@ protected:
 	uint64_t cur_hash; // Hash of current position
 	uint64_t zobrist_hash[PT_COUNT][64]; // Zobrist keys
 	std::vector<int> consecutiveQM; // Consequtive queen moves up to given ply
-	SVector<std::pair<Position, Position>, 100> prev_move_se; // Previous moves start and end positions in search 
+	SVector<PseudoMove, 1024> prev_move_se; // Previous moves start and end positions in search 
 	std::unordered_map<uint64_t, int> _position_count; // How many times each position occured throughout the game(for detecting draws)
 };
 

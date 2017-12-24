@@ -32,7 +32,7 @@ enum move_type : int8_t { ALL, CAPTURE, NON_CAPTURE };
 struct MLNode
 {
 	Move move;
-	int score;
+	float score;
 };
 
 inline bool operator>(const MLNode& ml1, const MLNode& ml2)

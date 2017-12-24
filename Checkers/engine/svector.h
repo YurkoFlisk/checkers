@@ -39,6 +39,7 @@ public:
 	inline const Elem* begin(void) const;
 	inline const Elem* end(void) const;
 	inline bool empty(void) const noexcept;
+	inline void resize(int) noexcept;
 	inline int size(void) const noexcept;
 	inline void add(const Elem&);
 	template<typename... Args>
@@ -64,24 +65,21 @@ template<typename Elem, int Capacity>
 inline SVector<Elem, Capacity>::SVector(const SVector<Elem, Capacity>& sv)
 	: siz(sv.siz)
 {
-	for (int i = 0; i < sv.siz; ++i)
-		elems[i] = sv.elems[i];
+	std::copy_n(sv.elems, siz, elems);
 }
 
 template<typename Elem, int Capacity>
 inline SVector<Elem, Capacity>::SVector(int cnt, const Elem& elem)
 	: siz(cnt)
 {
-	for (int i = 0; i < siz; ++i)
-		elems[i] = elem;
+	std::fill_n(elems, siz, elem);
 }
 
 template<typename Elem, int Capacity>
 inline SVector<Elem, Capacity>& SVector<Elem, Capacity>::operator=(const SVector<Elem, Capacity>& sv)
 {
 	siz = sv.siz;
-	for (int i = 0; i < siz; ++i)
-		elems[i] = sv.elems[i];
+	std::copy_n(sv.elems, sv.siz, elems);
 	return *this;
 }
 
@@ -113,6 +111,12 @@ template<typename Elem, int Capacity>
 inline bool SVector<Elem, Capacity>::empty(void) const noexcept
 {
 	return siz == 0;
+}
+
+template<typename Elem, int Capacity>
+inline void SVector<Elem, Capacity>::resize(int _siz) noexcept
+{
+	siz = _siz;
 }
 
 template<typename Elem, int Capacity>

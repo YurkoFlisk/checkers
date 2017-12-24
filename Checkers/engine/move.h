@@ -31,6 +31,19 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 typedef SVector<Position, 12> Path;
 typedef SVector<std::pair<Position, Piece>, 11> CaptureList;
 
+// Struct representing very compressed, while reasonable for almsot certain differentiation between
+// possible moves from given position, information about a move (useful for optimizing search)
+struct PseudoMove
+{
+	Position from;
+	Position to;
+};
+
+constexpr inline bool operator==(const PseudoMove& lhs, const PseudoMove& rhs) noexcept
+{
+	return lhs.from == rhs.from && lhs.to == rhs.to;
+}
+
 class Move
 {
 	friend class MoveGenDefault;
@@ -75,13 +88,17 @@ public:
 	{
 		return path;
 	}
-	inline const Position& old_pos(void) const
+	inline Position old_pos(void) const
 	{
 		return path.front();
 	}
-	inline const Position& new_pos(void) const
+	inline Position new_pos(void) const
 	{
 		return path.back();
+	}
+	inline PseudoMove get_pseudo(void) const
+	{
+		return {old_pos(), new_pos()};
 	}
 	inline void add_step(const Position& pos)
 	{

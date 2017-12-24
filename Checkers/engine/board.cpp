@@ -55,7 +55,7 @@ void Board::_clear_board(void)
 		piece_count[i] = 0;
 	for (int i = 0; i < 8; ++i)
 		for (int j = 0; j < 8; ++j)
-			board[i][j] = Piece(PT_EMPTY);
+			board[i][j] = Piece(PT_EMPTY), index[i][j] = 0;
 }
 
 void Board::restart(game_rules rule, bool mis) noexcept

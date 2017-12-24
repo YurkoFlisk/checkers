@@ -30,15 +30,18 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 #include <stack>
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include "misc.h"
 #include "board.h"
 #include "tt.h"
+
+#define TIMEOUT_CHECK_ON true
 
 enum step_result : int8_t { STEP_ILLEGAL, STEP_ILLEGAL_NEW, STEP_PROCEED, STEP_FINISH };
 enum node_type : int8_t { NODE_PV, NODE_CUT, NODE_ALL };
 
 // Expected node type of child of node with given expected type in a null-window search
-constexpr inline node_type nw_child(node_type node)
+constexpr inline node_type nw_child(node_type node) noexcept
 {
 	return node == NODE_CUT ? NODE_ALL : NODE_CUT;
 }
@@ -48,7 +51,7 @@ class Checkers
 {
 public:
 	static constexpr int TIME_CHECK_INTERVAL = 10000; // Interval(in number of calls to _pvs) between checking for timeout
-	static constexpr int16_t MAX_SCORE = 30000; // Max score(absolute value), which indicates special situations(win/loss, initial value etc)
+	static constexpr int16_t MAX_SCORE = 25000; // Max score(absolute value), which indicates special situations(win/loss, initial value etc)
 	static constexpr int16_t MAX_LOSE_SCORE = -MAX_SCORE + 1000; // Maximum score for loosing player
 	static constexpr int16_t MIN_WIN_SCORE = MAX_SCORE - 1000; // Minimum score for winning player
 	static constexpr int MAX_KILLERS = 3; // Maximum numbers of killers for killer heuristic(AI)
@@ -56,9 +59,9 @@ public:
 	static constexpr int16_t QUEEN_WEIGHT = 280; // Weight of queen piece in score function
 	static constexpr int16_t NORMAL_WEIGHT_ENDGAME = 105; // Weight of non-queen piece in score function in endgame
 	static constexpr int16_t QUEEN_WEIGHT_ENDGAME = 325; // Weight of queen piece in score function in endgame
-	static constexpr int16_t RELMAT_MULT = 110; // Multiplier for relative material advantage
+	static constexpr int16_t RELMAT_MULT = 275; // Multiplier for relative material advantage
 	static constexpr int16_t DELTA_PRUNING_MARGIN = 300; // Safety margin for delta pruning in quiscence search
-	static constexpr int16_t LT_PRUNING_MARGIN = 300; // Safety margin for LT pruning
+	static constexpr int16_t LT_PRUNING_MARGIN = 265; // Safety margin for LT pruning
 	static constexpr int16_t STAND_PAT_MARGIN = 300; // Safety margin for stand-pat pruning
 	static constexpr int16_t FUTILITY_MARGIN = 300; // Futility pruning margin
 	static constexpr int MS_TT_MOVE = 1000000000; // Move order score for move from the transposition table
@@ -67,13 +70,15 @@ public:
 	static constexpr int MC_MOVES_CHECK = 5; // Count of moves to check in multi-cut pruning
 	static constexpr int MC_MOVES_PRUNE = 3; // Count of moves to prune in multi-cut pruning
 	static constexpr int8_t MC_REDUCTION = 3; // Reduction of depth in multi-cut pruning
-	static constexpr int8_t MC_MIN_DEPTH = 5; // Minimum depth where multi-cut pruning is applied
-	static constexpr int8_t LMR_MIN_DEPTH = 3; // Minimum search depth where late move reduction can be applied
-	static constexpr int8_t ETC_MIN_DEPTH = 2; // Minimum search depth where enhanced transposition cutoff can be applied
+	static constexpr int8_t MC_MIN_DEPTH = 6; // Minimum depth where multi-cut pruning is applied
+	static constexpr int8_t LMR_MIN_DEPTH = 4; // Minimum search depth where late move reduction can be applied
+	static constexpr int8_t ETC_MIN_DEPTH = 4; // Minimum search depth where enhanced transposition cutoff can be applied
+	static constexpr int8_t PBCUT_DEPTH_REDUCTION = 4; // Reduction of depth for prob cut
+	static constexpr int8_t PBCUT_MIN_DEPTH = 8; // Minimum search depth where prob cut can be applied
 	static constexpr float DEFAULT_TIME_LIMIT = 5000.0f; // Maximum thinking time, ms
 	static constexpr int8_t UNBOUNDED_DEPTH = -1; // search_depth value indicating absence of search depth bound
 #if defined _DEBUG || defined DEBUG
-	static constexpr int8_t MAX_SEARCH_DEPTH = 8; // Maximum search depth of AI
+	static constexpr int8_t MAX_SEARCH_DEPTH = 20; // Maximum search depth of AI
 #else
 	static constexpr int8_t MAX_SEARCH_DEPTH = 120; // Maximum search depth of AI
 #endif
@@ -126,9 +131,9 @@ protected:
 	// Initialization of piece-square tables
 	void init_psq(void);
 	// Sort move list according to move order scores
-	void score_moves(MoveList&, Position = Position(), Position = Position());
+	void score_moves(MoveList&, PseudoMove = { {0, 0}, {0, 0} }); // Explicit 0-Initialization(NOT {}) of PseudoMove is IMPORTANT!
 	// Update killer moves for given ply with given move
-	void update_killers(int16_t, const Move&);
+	void update_killers(int16_t, PseudoMove);
 	// Overridden Board functions
 	inline void _put_piece(Position, Piece) override;
 	inline void _remove_piece(Position) override;
@@ -142,7 +147,7 @@ protected:
 	inline int16_t no_moves_score(int16_t) const noexcept;
 	inline int piece_weight(piece_type) const noexcept;
 	inline int captured_weight(const Move&) const;
-	inline int _history_move_score(const Move&) const;
+	inline float _history_move_score(const Move&) const;
 	inline bool _history_greater(const Move&, const Move&) const;
 	inline void _update_possible_moves(void);
 	inline bool _endgame(void) const noexcept;
@@ -161,12 +166,13 @@ protected:
 	int time_check_counter; // Counter for checking time in AI
 	std::chrono::time_point<std::chrono::high_resolution_clock> start_time; // Start time of AI search
 	bool timeout; // Whether it's timeout when AI is thinking
+	bool in_search; // Whether we are in search now
 	std::vector<Move> undos; // Stack for information about undoing moves
 	std::stack<Move> redos; // Stack for information about redoing undone moves
 	Move _cur_move; // Internal member for step function
 	std::vector<Move> _cur_possible_moves; // Internal member for step function
 	TranspositionTable _transtable[2]; // Scores for some of already computed positions where 0 is white's turn and 1 is black's
-	std::vector<std::list<Move> > killers; // Killers for killer heuristic in AI(indexed by ply)
+	SVector<std::list<PseudoMove>, 1024> killers; // Killers for killer heuristic in AI(indexed by ply)
 	Move countermove[64][64]; // Countermove table for countermove heuristic
 	int history[64][64]; // History table for relative history heuristic in AI
 	int butterfly[64][64]; // Butterfly table for relative history heuristic in AI
@@ -291,10 +297,10 @@ inline int16_t Checkers::no_moves_score(int16_t ply) const noexcept
 	return get_misere() ? win_score(ply) : lose_score(ply);
 }
 
-inline int Checkers::_history_move_score(const Move& m) const
+inline float Checkers::_history_move_score(const Move& m) const
 {
-	return round((float)(history[pos_idx(m.old_pos())][pos_idx(m.new_pos())]) /
-		butterfly[pos_idx(m.old_pos())][pos_idx(m.new_pos())]);
+	return (float)(history[pos_idx(m.old_pos())][pos_idx(m.new_pos())]) /
+		butterfly[pos_idx(m.old_pos())][pos_idx(m.new_pos())];
 }
 
 inline bool Checkers::_history_greater(const Move& lhs, const Move& rhs) const

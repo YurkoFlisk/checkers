@@ -23,6 +23,7 @@ along with Checkers.If not, see <http://www.gnu.org/licenses/>
 
 #include "checkers.h"
 #include <functional>
+#include <fstream>
 
 int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled symmetrically in init_psq function
 	{ // PT_EMPTY
@@ -32,9 +33,9 @@ int16_t PSQ_TABLE[PT_COUNT][8][8] = { // Only for left columns, right are filled
 		{  3,  4,  5,  8 },
 		{  6,  7,  9, 12 },
 		{ 12, 12, 14, 14 },
-		{ 16, 18, 18, 19 },
-		{ 20, 22, 23, 23 },
-		{ 26, 27, 28, 28 },
+		{ 14, 16, 16, 17 },
+		{ 18, 20, 21, 21 },
+		{ 23, 24, 25, 25 },
 		{ -1, -1, -1, -1 } // unused
 	},{ // BLACK_SIMPLE(filled symmetrically to WHITE_SIMPLE in init_psq function)
 	},{ // unused
@@ -90,11 +91,14 @@ void Checkers::restart(game_rules rule, bool mis) noexcept
 	(decltype(undos)()).swap(undos);
 	(decltype(redos)()).swap(redos);
 	_update_possible_moves();
-	for (auto killer : killers)
+	for (auto& killer : killers)
 		killer.clear();
 	for (int i = 0; i < 64; ++i)
 		for (int j = 0; j < 64; ++j)
+		{
 			butterfly[i][j] = (history[i][j] = 0) + 1;
+			countermove[i][j] = Move();
+		}
 }
 
 inline void Checkers::_put_piece(Position pos, Piece piece)
@@ -235,15 +239,16 @@ void Checkers::perform_computer_move(void)
 	_update_possible_moves();
 }
 
-void Checkers::score_moves(MoveList& moves, Position ttmove_from, Position ttmove_to)
+void Checkers::score_moves(MoveList& moves, PseudoMove tt_pseudo_bm)
 {
 	// Assign scores to moves
 	if (moves[0].move.capt_size() == 0) // If non-capture moves
 		for (int i = 0; i < moves.size(); ++i)
 		{
 			const auto& cur_move = moves[i].move;
+			const PseudoMove cur_pm = cur_move.get_pseudo();
 			// TT move
-			if (cur_move.old_pos() == ttmove_from && cur_move.new_pos() == ttmove_to)
+			if (cur_pm == tt_pseudo_bm)
 			{
 				moves[i].score = MS_TT_MOVE;
 				continue;
@@ -251,14 +256,14 @@ void Checkers::score_moves(MoveList& moves, Position ttmove_from, Position ttmov
 			// Killer moves
 			moves[i].score = 0;
 			for (const auto& killer : killers[cur_ply])
-				if (killer == cur_move)
+				if (killer == cur_pm)
 				{
 					moves[i].score = MS_KILLER_MOVE;
 					break;
 				}
 			// Countermove heuristic
-			if(!prev_move_se.empty() && cur_move == countermove[pos_idx(prev_move_se.
-				back().first)][pos_idx(prev_move_se.back().second)])
+			if (!prev_move_se.empty() && cur_move == countermove[pos_idx(prev_move_se.
+				back().from)][pos_idx(prev_move_se.back().to)])
 				moves[i].score += MS_COUNTERMOVE_BONUS;
 			// Relative history heuristic
 			moves[i].score += _history_move_score(cur_move);
@@ -268,7 +273,7 @@ void Checkers::score_moves(MoveList& moves, Position ttmove_from, Position ttmov
 		{
 			const auto& cur_move = moves[i].move;
 			// TT move
-			if (cur_move.old_pos() == ttmove_from && cur_move.new_pos() == ttmove_to)
+			if (cur_move.get_pseudo() == tt_pseudo_bm)
 			{
 				moves[i].score = MS_TT_MOVE;
 				continue;
@@ -278,28 +283,21 @@ void Checkers::score_moves(MoveList& moves, Position ttmove_from, Position ttmov
 				<< 1) + piece_weight(cur_move.get_become().get_type());
 			// Countermove heuristic
 			if (!prev_move_se.empty() && cur_move == countermove[pos_idx(prev_move_se.
-				back().first)][pos_idx(prev_move_se.back().second)])
+				back().from)][pos_idx(prev_move_se.back().to)])
 				moves[i].score += MS_COUNTERMOVE_BONUS;
 		}
 }
 
-void Checkers::update_killers(int16_t ply, const Move& move)
+void Checkers::update_killers(int16_t ply, PseudoMove move)
 {
 	// Check whether this potential killer is a new one
-	bool killer_new = true;
-	for (const auto& killer : killers[cur_ply])
+	for (auto killer : killers[cur_ply])
 		if (killer == move)
-		{
-			killer_new = false;
-			break;
-		}
+			return;
 	// If it's new, add it to killers
-	if (killer_new)
-	{
-		killers[cur_ply].push_front(move);
-		if (killers[cur_ply].size() > MAX_KILLERS)
-			killers[cur_ply].pop_back();
-	}
+	killers[cur_ply].push_front(move);
+	if (killers[cur_ply].size() > MAX_KILLERS)
+		killers[cur_ply].pop_back();
 }
 
 inline int16_t Checkers::score(void) const noexcept
@@ -338,12 +336,11 @@ int16_t Checkers::evaluate(int16_t alpha, int16_t beta)
 	// Get all capture moves
 	MoveList moves;
 	get_all_moves<TURN, CAPTURE>(moves);
-	// If no capture moves, check whether there are non-capture moves
+	// If no capture moves, check whether some our pieces left. We could check whether there are non-capture
+	// moves(all pieces can be blocked), but several mislooked mates here are not worth time it costs
 	if (moves.empty())
-	{
-		get_all_moves<TURN, NON_CAPTURE>(moves);
-		return moves.empty() ? lose_score(cur_ply) : stand_pat;
-	}
+		return (piece_count[turn_simple(TURN)] == 0 && piece_count[turn_queen(TURN)] == 0) ?
+		lose_score(cur_ply) : stand_pat;
 	// Sort moves by their score
 	score_moves(moves);
 	std::sort(moves.begin(), moves.end(), std::greater<MLNode>());
@@ -390,21 +387,20 @@ int8_t Checkers::get_computer_move(Move& out, int& out_score)
 	// Make sure killers vector size is sufficient
 	if (cur_ply + MAX_SEARCH_DEPTH > killers.size())
 		killers.resize(cur_ply + MAX_SEARCH_DEPTH);
-	// Clear previous move end's list
-	prev_move_se.clear();
 	// Sort moves by their scores
 	score_moves(moves);
 	std::sort(moves.begin(), moves.end(), std::greater<MLNode>());
 	// Configuring start time
 	start_time = std::chrono::high_resolution_clock::now();
 	// Main iterative deepening loop
+	// log.open("log.txt", std::ios::out | std::ios::app);
 	int8_t out_depth = 0;
 	timeout = false, time_check_counter = 0, out_score = 0;
 	for (int depth = 1; depth <= (search_depth == UNBOUNDED_DEPTH ?
 		MAX_SEARCH_DEPTH : search_depth); ++depth)
 	{
 		// Principal variation search with aspiration windows
-		int16_t delta = 21, best_score;
+		int16_t delta = 24, best_score;
 		int16_t alpha = std::max(out_score - delta, -MAX_SCORE),
 			beta = std::min(out_score + delta, +MAX_SCORE);
 		int best_move;
@@ -466,7 +462,7 @@ int8_t Checkers::get_computer_move(Move& out, int& out_score)
 				{
 					// Update killer moves if position is quiet and current search depth is good enough
 					if (quiet && depth > search_depth - 2)
-						update_killers(cur_ply, cur_move);
+						update_killers(cur_ply, cur_move.get_pseudo());
 					// Cutoff
 					break;
 				}
@@ -475,7 +471,7 @@ int8_t Checkers::get_computer_move(Move& out, int& out_score)
 			if (timeout)
 				break;
 			// Update delta
-			delta += delta / 3;
+			delta += delta / 2;
 			// Update aspiration window (alpha and beta)
 			if (best_score <= alpha) // fail-low
 			{
@@ -496,16 +492,17 @@ int8_t Checkers::get_computer_move(Move& out, int& out_score)
 		if (timeout)
 			break;
 		// Update move order by new scores and reorder moves in the move list
-		score_moves(moves, moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
+		score_moves(moves, moves[best_move].move.get_pseudo());
 		std::sort(moves.begin(), moves.end(), std::greater<MLNode>());
 		// Set out score and depth
 		out_score = best_score;
 		out_depth = depth;
 	}
+	// log.close();
 	out = moves[0].move;
 	// Add this position evaluation to transposition table
 	_transtable[TURN - WHITE].store(get_hash(), value_to_tt(out_score, cur_ply), root_ply,
-		out_depth, TTBOUND_EXACT, out.old_pos(), out.new_pos());
+		out_depth, TTBOUND_EXACT, out.get_pseudo());
 	return out_depth;
 }
 
@@ -513,6 +510,7 @@ template<colour TURN, node_type NODE_TYPE>
 int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 {
 	// Time control
+#if TIMEOUT_CHECK_ON
 	if ((++time_check_counter) == TIME_CHECK_INTERVAL)
 	{
 		time_check_counter = 0;
@@ -524,6 +522,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 			return 0;
 		}
 	}
+#endif
 	// Reached desired depth, so evaluate this position score
 	if (depth == 0)
 		return evaluate<TURN>(alpha, beta);
@@ -551,7 +550,7 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				beta = std::min(beta, value_from_tt(*tt_it, cur_ply));
 				break;
 			}
-		// EXPERIMENTAL AUTHOR's HEURISTIC(Lesser transposition pruning)
+		// EXPERIMENTAL AUTHOR's HEURISTIC (Lesser transposition pruning)
 		else if (tt_it->depth + 2 >= depth)
 		{
 			if (alpha > MAX_LOSE_SCORE && tt_it->bound_type != TTBOUND_UPPER)
@@ -561,6 +560,22 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		}
 		if (alpha >= beta)
 			return alpha;
+	}
+	// Prob cut (Experimental approach)
+	if (NODE_TYPE != NODE_PV && depth >= PBCUT_MIN_DEPTH && !_endgame())
+	{
+		if (abs(beta) < MIN_WIN_SCORE)
+		{
+			const int16_t bound = beta + 120 - depth;
+			if (_pvs<TURN, NODE_CUT>(depth - PBCUT_DEPTH_REDUCTION, bound - 1, bound) >= bound)
+				return beta;
+		}
+		if (abs(alpha) < MIN_WIN_SCORE)
+		{
+			const int16_t bound = alpha - 120 + depth;
+			if (_pvs<TURN, NODE_ALL>(depth - PBCUT_DEPTH_REDUCTION, bound, bound + 1) <= bound)
+				return alpha;
+		}
 	}
 	// Get all moves for current position
 	MoveList moves;
@@ -583,29 +598,30 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 		if (alpha >= beta)
 			return alpha;
 	}
-	// Whether position is quiet(legal moves from here are non-captures)
+	// Whether position is quiet (legal moves from here are non-captures)
 	const bool quiet = (moves[0].move.capt_size() == 0);
-	// Whether late move reduction is on here
+	// Whether late move reduction and futility pruning are on here
 	const bool LMR_on = (depth >= LMR_MIN_DEPTH && quiet),
-		FP_on = (depth == 1 && quiet && alpha > MAX_LOSE_SCORE); // Whether futility pruning is on here
+		FP_on = (depth == 1 && quiet && alpha > MAX_LOSE_SCORE);
 	// Assign scores to moves
 	if (tt_it == nullptr)
 		score_moves(moves);
 	else
-		score_moves(moves, tt_it->best_move_from, tt_it->best_move_to);
-	// Partially sort moves list, so that we have several(enough for MC pruning) best moves at it's beginning
+		score_moves(moves, tt_it->best_pseudo_move);
+	// Partially sort moves list, so that we have several (enough for MC pruning) best moves at it's beginning
 	const int cnt_presorted = std::min(moves.size(), MC_MOVES_CHECK);
 	std::partial_sort(moves.begin(), moves.begin() + cnt_presorted,
 		moves.end(), std::greater<MLNode>());
 	// If not in PV-Node, do a multi-cut pruning
 	if (NODE_TYPE != NODE_PV && depth >= MC_MIN_DEPTH)
 	{
-		size_t cnt_fh = 0;
+		int cnt_fh = 0;
 		for (move_idx = 0; move_idx + MC_MOVES_PRUNE - cnt_fh <= cnt_presorted; ++move_idx)
 		{
 			const Move& cur_move = moves[move_idx].move;
 			_do_move(cur_move);
-			_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - 1 - MC_REDUCTION, -beta, -alpha);
+			_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth - 1 - MC_REDUCTION
+				- (depth >> 3), -beta, -alpha);
 			if (_score >= beta)
 				if ((++cnt_fh) == MC_MOVES_PRUNE)
 				{
@@ -642,10 +658,11 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 			}
 			// Late move reduction
 			bool do_search = false;
-			if (LMR_on && move_idx > 2)
+			if (LMR_on && move_idx > (NODE_TYPE == NODE_PV ? 3 : 2))
 			{
 				_score = -_pvs<opposite(TURN), nw_child(NODE_TYPE)>(depth -
-					(move_idx > (NODE_TYPE == NODE_PV ? 7 : 4) ? 3 : 2), -alpha - 1, -alpha);
+					(move_idx > (NODE_TYPE == NODE_PV ? 7 : 4) ?
+						(move_idx > (NODE_TYPE == NODE_PV ? 11 : 8) ? 4 : 3) : 2), -alpha - 1, -alpha);
 				if (_score > alpha) // (or >= ?) If reduced search returns score above alpha, do a full research
 					do_search = true;
 			}
@@ -661,8 +678,8 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				{
 					// Test whether we can improve alpha, and if we can, then do a full research
 					_score = -_pvs<opposite(TURN), NODE_CUT>(depth - 1, -alpha - 1, -alpha);
-					// If the search failed low hard, in some expected NODE_ALL there could be a forward prune, so we should
-					// do a research even if alpha-beta window has already 'closed'(it's safer), thus we do additional check here
+					// If the search failed low hard, in some expected NODE_ALL there could be a forward prune, so we should do
+					// a research even if alpha-beta window has already 'closed' (it's safer), thus we do additional check here
 					if (!timeout && ((beta > _score && _score > alpha) || _score == alpha + 1))
 					{
 						// If in some expected NODE_ALL there was a forward prune, _score may be an
@@ -702,19 +719,21 @@ int16_t Checkers::_pvs(int8_t depth, int16_t alpha, int16_t beta)
 				for (int i = 0; i < move_idx; ++i)
 					butterfly[pos_idx(moves[i].move.old_pos())][pos_idx(moves[i].move.new_pos())] += depth;
 				// Update killer heuristic
-				update_killers(cur_ply, cur_move);
+				update_killers(cur_ply, cur_move.get_pseudo());
 			}
 			// Update countermove heuristic
-			countermove[pos_idx(prev_move_se.back().first)][pos_idx(prev_move_se.back().second)] = cur_move;
+			countermove[pos_idx(prev_move_se.back().from)][pos_idx(prev_move_se.back().to)] = cur_move;
 			// Cutoff
 			break;
 		}
 	}
 	// Add this position evaluation to transposition table if appropriate
+	// (avoid hard fail-highs caused by a forward prune at expected ALL_NODE (best_score == old_alpha))
+	// Don't store an upper bound move, because information about it is uncertain (it's score could be lower)
 	if (!(NODE_TYPE == NODE_CUT && best_score == old_alpha))
 		_transtable[TURN - WHITE].store(get_hash(), value_to_tt(best_score, cur_ply), root_ply, depth,
 			best_score <= old_alpha ? TTBOUND_UPPER : (alpha < beta ? TTBOUND_EXACT : TTBOUND_LOWER),
-			moves[best_move].move.old_pos(), moves[best_move].move.new_pos());
+			best_score <= old_alpha ? PseudoMove() : moves[best_move].move.get_pseudo());
 	return best_score; // !!!!! NOT ALPHA !!!!!
 }
 
