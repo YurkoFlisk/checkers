@@ -1,19 +1,25 @@
 // Checkers engine interface
 // Used by CheckersEngTester for accessing different version of engine with the same interface
-// Copyright(c) 2016 Yurko Prokopets(aka YurkoFlisk)
-// main.cpp, version 1.5
+// Copyright (c) 2016-2017 Yurko Prokopets (aka YurkoFlisk)
+// main.cpp, version 1.7
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <fstream>
 #include "../Checkers/engine/checkers.h"
+
+// User messages
 #define CM_MOVE WM_USER
 #define CM_CPUMOVE WM_USER + 1
 #define CM_SETDEPTH WM_USER + 2
+#define CM_SETTIMELIMIT WM_USER + 3
+
 // Constants
 const char* CLASS_NAME = "Checkers engine interface";
+
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
 // Main function
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -38,11 +44,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	}
 	return msg.wParam;
 }
+
 // Callback function for handling messages from CheckersEngTester
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static Checkers game;
 	static Move move;
+	static int8_t depth;
 	static std::ifstream in;
 	static std::ofstream out;
 	switch (msg)
@@ -54,14 +62,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		game.move(move);
 		return game.get_state();
 	case CM_CPUMOVE:
-		game.get_computer_move(move);
+		depth = game.get_computer_move(move);
 		game.move(move);
 		out.open("text.txt");
 		Board::write_move(out, move);
 		out.close();
-		return game.get_state();
+		return depth;
 	case CM_SETDEPTH:
 		game.set_search_depth(wParam);
+		break;
+	case CM_SETTIMELIMIT:
+		game.set_time_limit(wParam);
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
