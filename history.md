@@ -69,3 +69,16 @@
 * added basic timing
 * added English rules
 * corrected and enhanced scheme of loading and saving boards and games
+
+###1.7
+* fixed some bugs (related to time control, killer moves etc.)
+* optimized engine core by introducing pseudo-moves struct (which include only start and end position of the move), which is now saved for and used in move ordering heuristics instead of full move info (it's not always exact, but it's considerably faster)
+* optimized engine core by using custom vector with stack allocation in performance-critical sections
+* improved static evaluation function
+* improved move scoring and sorting scheme, added MVV-LVA, countermove heuristic
+* improved transposition table replacement strategy, added aging 
+* tuned some search parameters and details of previously added stuff (LMR, for example)
+* added enhanced forward pruning mechanism
+* added ProbCut pruning (experimental)
+* added variable time limit for an AI move
+* increased maximum AI search depth, added unbounded depth option (with only a time limit)
